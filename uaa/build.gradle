@@ -117,6 +117,7 @@ task populateVersionfile {
     versionFile.text = version.toString().substring(0, version.toString().lastIndexOf(".")) + ".0"
 }
 task customizeSlate(type: Copy) {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     dependsOn populateVersionfile
     from("slate")
     from("slateCustomizations")
