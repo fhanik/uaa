@@ -52,6 +52,7 @@ import org.cloudfoundry.identity.uaa.oauth.jwt.JwtHelper;
 import org.cloudfoundry.identity.uaa.oauth.jwt.SignatureVerifier;
 import org.cloudfoundry.identity.uaa.oauth.jwt.UaaMacSigner;
 import org.cloudfoundry.identity.uaa.oauth.token.ClaimConstants;
+import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
 import org.cloudfoundry.identity.uaa.provider.AbstractExternalOAuthIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.provider.AbstractExternalOAuthIdentityProviderDefinition.OAuthGroupMappingMode;
 import org.cloudfoundry.identity.uaa.provider.ExternalIdentityProviderDefinition;
@@ -789,6 +790,7 @@ public class ExternalOAuthAuthenticationManager extends ExternalLoginAuthenticat
         headers.add("Accept", "application/json");
 
         URI requestUri;
+        body.add(TokenConstants.REQUEST_TOKEN_FORMAT, TokenConstants.TokenFormat.OPAQUE.getStringValue());
         HttpEntity requestEntity = new HttpEntity<>(body, headers);
         try {
             requestUri = config.getTokenUrl().toURI();
