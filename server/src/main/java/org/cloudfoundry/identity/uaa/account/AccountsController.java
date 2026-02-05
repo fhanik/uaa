@@ -39,7 +39,7 @@ public class AccountsController {
         this.identityProviderProvisioning = identityProviderProvisioning;
     }
 
-    @GetMapping("/create_account")
+    @GetMapping({"/create_account", "/z/{subdomain}/create_account"})
     public String activationEmail(Model model,
                                   @RequestParam(value = "client_id", required = false) String clientId,
                                   @RequestParam(value = "redirect_uri", required = false) String redirectUri,
@@ -54,7 +54,7 @@ public class AccountsController {
         return "accounts/new_activation_email";
     }
 
-    @PostMapping("/create_account.do")
+    @PostMapping({"/create_account.do", "/z/{subdomain}/create_account.do"})
     public String sendActivationEmail(Model model, HttpServletResponse response,
                                       @RequestParam(value = "client_id", required = false) String clientId,
                                       @RequestParam(value = "redirect_uri", required = false) String redirectUri,
@@ -94,18 +94,18 @@ public class AccountsController {
         return "redirect:accounts/email_sent";
     }
 
-    @GetMapping("/accounts/email_sent")
+    @GetMapping({"/accounts/email_sent", "/z/{subdomain}/accounts/email_sent"})
     public String emailSent() {
         return "accounts/email_sent";
     }
 
-    @RequestMapping(value = "/verify_user", method = RequestMethod.HEAD)
+    @RequestMapping(value = {"/verify_user", "/z/{subdomain}/verify_user"}, method = RequestMethod.HEAD)
     public String verifyUser() {
         // Some mail providers initially send a HEAD request to check the validity of the link before redirecting users.
         return "redirect:/login";
     }
 
-    @GetMapping("/verify_user")
+    @GetMapping({"/verify_user", "/z/{subdomain}/verify_user"})
     public String verifyUser(Model model,
                              @RequestParam String code,
                              HttpServletResponse response, HttpSession session) {

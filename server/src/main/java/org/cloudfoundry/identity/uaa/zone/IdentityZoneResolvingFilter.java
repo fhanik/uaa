@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import jakarta.servlet.FilterChain;
@@ -31,11 +32,13 @@ import java.util.Set;
 
 /**
  * This filter ensures that all requests are targeting a specific identity zone
- * by hostname. If the hostname doesn't match an identity zone, a 404 error is
- * sent.
- *
+ * by hostname or by path prefix /z/{subdomain}/. If the hostname doesn't match
+ * an identity zone, a 404 error is sent. Using both a subdomain (host) and a /z/
+ * path is not allowed and returns 400.
  */
 public class IdentityZoneResolvingFilter extends OncePerRequestFilter implements InitializingBean {
+
+    private static final String ZONE_PATH_PREFIX = "/z/";
 
     private final IdentityZoneProvisioning dao;
     private final Set<String> staticResources = Set.of("/resources/", "/vendor/font-awesome/");
@@ -49,9 +52,21 @@ public class IdentityZoneResolvingFilter extends OncePerRequestFilter implements
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        String requestPath = UaaUrlUtils.getRequestPath(request);
+        String subdomainFromHost = getSubdomainFromHost(request.getServerName());
+        String subdomainFromPath = getSubdomainFromPath(requestPath);
+
+        // 400: path starts with /z/ and host has a zone subdomain
+        if (requestPath.startsWith(ZONE_PATH_PREFIX) && StringUtils.hasText(subdomainFromHost)) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Cannot use both subdomain and zone path");
+            return;
+        }
+
+        // Host always overrides path domain - path domain only works if there is no Host subdomain
+        String subdomain = StringUtils.hasText(subdomainFromPath) && "".equals(subdomainFromHost) ?
+                subdomainFromPath : subdomainFromHost;
+
         IdentityZone identityZone = null;
-        String hostname = request.getServerName();
-        String subdomain = getSubdomain(hostname);
         if (subdomain != null) {
             try {
                 identityZone = dao.retrieveBySubdomain(subdomain);
@@ -66,7 +81,7 @@ public class IdentityZoneResolvingFilter extends OncePerRequestFilter implements
         }
         if (identityZone == null) {
             // skip filter to static resources in order to serve images and css in case of invalid zones
-            boolean isStaticResource = staticResources.stream().anyMatch(UaaUrlUtils.getRequestPath(request)::startsWith);
+            boolean isStaticResource = staticResources.stream().anyMatch(requestPath::startsWith);
             if (isStaticResource) {
                 filterChain.doFilter(request, response);
                 return;
@@ -84,7 +99,23 @@ public class IdentityZoneResolvingFilter extends OncePerRequestFilter implements
         }
     }
 
-    private String getSubdomain(String hostname) {
+    /**
+     * Returns the subdomain if path starts with /z/{subdomain}/, otherwise null.
+     */
+    private String getSubdomainFromPath(String path) {
+        if (path == null || !path.startsWith(ZONE_PATH_PREFIX)) {
+            return null;
+        }
+        String afterPrefix = path.substring(ZONE_PATH_PREFIX.length());
+        int slash = afterPrefix.indexOf('/');
+        if (slash < 0) {
+            return null;
+        }
+        String subdomain = afterPrefix.substring(0, slash);
+        return StringUtils.hasText(subdomain) ? subdomain : null;
+    }
+
+    private String getSubdomainFromHost(String hostname) {
         String lowerHostName = hostname.toLowerCase();
         if (defaultZoneHostnames.contains(lowerHostName)) {
             return "";

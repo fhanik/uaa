@@ -75,7 +75,7 @@ public class TokenIntrospectionSecurityConfiguration {
     @Order(FilterChainOrder.RESOURCE)
     UaaFilterChain tokenKeySecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/token_key/**", "/token_keys/**")
+                .securityMatcher("/token_key/**", "/token_keys/**", "/z/*/token_key", "/z/*/token_key/**", "/z/*/token_keys", "/z/*/token_keys/**")
                 .authorizeHttpRequests( auth -> {
                     auth.requestMatchers("/**").access(anyOf().anonymous().fullyAuthenticated());
                     auth.anyRequest().denyAll();

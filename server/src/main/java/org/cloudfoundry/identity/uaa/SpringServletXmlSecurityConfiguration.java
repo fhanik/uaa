@@ -47,26 +47,27 @@ import static org.springframework.security.config.Customizer.withDefaults;
 @EnableWebSecurity
 public class SpringServletXmlSecurityConfiguration {
 
+    // Ant-style patterns: use /z/*/path (not /z/{subdomain}/path) so AntPathRequestMatcher matches zone paths
     private final String[] noSecurityEndpoints = {
             "/error**",
             "/error/**",
             "/rejected",
             "/resources/**",
             "/square-logo.png",
-            "/info",
+            "/info", "/z/*/info",
             "/password/**",
             "/saml/web/**",
             "/vendor/**",
-            "/email_sent",
-            "/accounts/email_sent",
-            "/invalid_request",
+            "/email_sent", "/z/*/email_sent",
+            "/accounts/email_sent", "/z/*/accounts/email_sent",
+            "/invalid_request", "/z/*/invalid_request",
             "/saml_error",
             "/favicon.ico",
             "/oauth_error",
             "/session",
             "/session_management",
-            "/oauth/token/.well-known/openid-configuration",
-            "/.well-known/openid-configuration",
+            "/oauth/token/.well-known/openid-configuration", "/z/*/oauth/token/.well-known/openid-configuration",
+            "/.well-known/openid-configuration", "/z/*/.well-known/openid-configuration",
             "/logged_out"
     };
 
@@ -189,6 +190,7 @@ public class SpringServletXmlSecurityConfiguration {
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.after(Saml2LogoutRequestFilter.class), saml2LogoutResponseFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.before(AnonymousAuthenticationFilter.class), userManagementSecurityFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.after(DisableUserManagementSecurityFilter.class), userManagementFilter.getFilter());
+        //TODO - should this be directly after the filter that sets the SecurityContext?
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(102), sessionResetFilter.getFilter());
 
         bean.setAdditionalFilters(additionalFilters);

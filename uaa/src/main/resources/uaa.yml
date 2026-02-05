@@ -543,16 +543,27 @@ uaa:
     whitelist:
       endpoints:
         - /oauth/authorize/**
+        - /z/*/oauth/authorize/**
         - /oauth/token/**
+        - /z/*/oauth/token/**
         - /check_token/**
+        - /z/*/check_token/**
         - /login/**
+        - /z/*/login/**
         - /login.do
+        - /z/*/login.do
         - /logout/**
+        - /z/*/logout/**
         - /logout.do
+        - /z/*/logout.do
         - /saml/**
+        - /z/*/saml/**
         - /autologin/**
+        - /z/*/autologin/**
         - /authenticate/**
+        - /z/*/authenticate/**
         - /idp_discovery/**
+        - /z/*/idp_discovery/**
       methods:
         - GET
         - HEAD

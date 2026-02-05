@@ -469,16 +469,16 @@ class LoginSecurityConfiguration {
     ) throws Exception {
         var originalChain = http
                 .securityMatcher(
-                        "/delete_saved_account",
-                        "/verify_user",
-                        "/verify_email",
-                        "/forgot_password",
-                        "/forgot_password.do",
+                        "/delete_saved_account", "/z/*/delete_saved_account",
+                        "/verify_user", "/z/*/verify_user",
+                        "/verify_email", "/z/*/verify_email",
+                        "/forgot_password", "/z/*/forgot_password",
+                        "/forgot_password.do", "/z/*/forgot_password.do",
                         ResetPasswordAuthenticationFilter.RESET_PASSWORD_URL
                 )
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .csrf(csrf -> {
-                    csrf.ignoringRequestMatchers("/forgot_password.do");
+                    csrf.ignoringRequestMatchers("/forgot_password.do", "/z/*/forgot_password.do");
                     csrf.csrfTokenRepository(csrfTokenRepository);
                     csrf.csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler());
                 })
@@ -523,26 +523,32 @@ class LoginSecurityConfiguration {
                 })
                 .authenticationManager(authenticationManager)
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers("/force_password_change/**").fullyAuthenticated();
-                    auth.requestMatchers("/reset_password**").anonymous();
-                    auth.requestMatchers("/create_account*").anonymous();
-                    auth.requestMatchers("/login/idp_discovery").anonymous();
-                    auth.requestMatchers("/login/idp_discovery/**").anonymous();
-                    auth.requestMatchers("/saml/metadata/**").anonymous();
-                    auth.requestMatchers("/origin-chooser").anonymous();
-                    auth.requestMatchers("/login**").access(anyOf().anonymous().fullyAuthenticated());
+                    auth.requestMatchers("/force_password_change/**", "/z/*/force_password_change/**").fullyAuthenticated();
+                    auth.requestMatchers("/reset_password**", "/z/*/reset_password**").anonymous();
+                    auth.requestMatchers("/create_account*", "/z/*/create_account*").anonymous();
+                    auth.requestMatchers("/accounts/email_sent", "/z/*/accounts/email_sent").anonymous();
+                    auth.requestMatchers("/login/idp_discovery", "/z/*/login/idp_discovery").anonymous();
+                    auth.requestMatchers("/login/idp_discovery/**", "/z/*/login/idp_discovery/**").anonymous();
+                    auth.requestMatchers("/saml/metadata/**", "/z/*/saml/metadata/**").anonymous();
+                    auth.requestMatchers("/origin-chooser", "/z/*/origin-chooser").anonymous();
+                    auth.requestMatchers("/login**", "/z/*/login**").access(anyOf().anonymous().fullyAuthenticated());
+                    // Allow OPTIONS for CORS preflight to logout.do (including zone path)
+                    auth.requestMatchers(HttpMethod.OPTIONS, "/logout.do", "/z/*/logout.do").permitAll();
                     auth.requestMatchers("/**").fullyAuthenticated();
                 })
                 .formLogin(login -> {
                     login.loginPage("/login");
                     login.usernameParameter("username");
                     login.passwordParameter("password");
+                    // Support both /login.do and /z/{subdomain}/login.do for zone path-based authentication
                     login.loginProcessingUrl("/login.do");
                     login.defaultSuccessUrl("/"); // TODO is this exactly the same?
                     login.successHandler(loginSuccessHandler);
                     login.failureHandler(loginFailureHandler);
                     login.authenticationDetailsSource(new UaaAuthenticationDetailsSource());
                 })
+                // Add a second filter for zone path login processing
+                .addFilterBefore(zonePathLoginFilter(authenticationManager, loginSuccessHandler, loginFailureHandler), UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new HttpsHeaderFilter(), DisableEncodeUrlFilter.class)
                 // TODO: Opt in to SecurityContextHolder filter instead of SecurityContextPersistenceFilter
                 // See: https://docs.spring.io/spring-security/reference/5.8/migration/servlet/session-management.html
@@ -597,6 +603,23 @@ class LoginSecurityConfiguration {
         oauth2ResourceFilter.setAuthenticationManager(oauth2AuthenticationManager);
         oauth2ResourceFilter.setAuthenticationEntryPoint(oauthAuthenticationEntryPoint);
         return oauth2ResourceFilter;
+    }
+
+    /**
+     * Creates a UsernamePasswordAuthenticationFilter for zone path-based login.
+     * This handles POST requests to /z/{subdomain}/login.do
+     */
+    private UsernamePasswordAuthenticationFilter zonePathLoginFilter(
+            AuthenticationManager authenticationManager,
+            AccountSavingAuthenticationSuccessHandler successHandler,
+            UaaAuthenticationFailureHandler failureHandler
+    ) {
+        UsernamePasswordAuthenticationFilter filter = new UsernamePasswordAuthenticationFilter(authenticationManager);
+        filter.setRequiresAuthenticationRequestMatcher(new AntPathRequestMatcher("/z/*/login.do", "POST"));
+        filter.setAuthenticationSuccessHandler(successHandler);
+        filter.setAuthenticationFailureHandler(failureHandler);
+        filter.setAuthenticationDetailsSource(new UaaAuthenticationDetailsSource());
+        return filter;
     }
 
 }

@@ -151,7 +151,7 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint implements Authen
         this.implicitLock = new Object();
     }
 
-    @RequestMapping(value = "/oauth/authorize")
+    @RequestMapping(value = {"/oauth/authorize", "/z/{subdomain}/oauth/authorize"})
     public ModelAndView authorize(Map<String, Object> model,
             @RequestParam Map<String, String> parameters,
             SessionStatus sessionStatus,
@@ -398,7 +398,7 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint implements Authen
         return authorizationRequestMap;
     }
 
-    @PostMapping(value = "/oauth/authorize", params = OAuth2Utils.USER_OAUTH_APPROVAL)
+    @PostMapping(value = {"/oauth/authorize", "/z/{subdomain}/oauth/authorize"}, params = OAuth2Utils.USER_OAUTH_APPROVAL)
     public View approveOrDeny(@RequestParam Map<String, String> approvalParameters, Map<String, ?> model,
             SessionStatus sessionStatus, Principal principal) {
 

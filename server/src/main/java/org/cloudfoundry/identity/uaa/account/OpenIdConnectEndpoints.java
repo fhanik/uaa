@@ -28,7 +28,9 @@ public class OpenIdConnectEndpoints {
 
     @GetMapping(value = {
             "/.well-known/openid-configuration",
-            "/oauth/token/.well-known/openid-configuration"
+            "/oauth/token/.well-known/openid-configuration",
+            "/z/{subdomain}/.well-known/openid-configuration",
+            "/z/{subdomain}/oauth/token/.well-known/openid-configuration"
     })
     public ResponseEntity<OpenIdConfiguration> getOpenIdConfiguration(HttpServletRequest request) throws URISyntaxException {
         OpenIdConfiguration conf = new OpenIdConfiguration(getServerContextPath(request), getTokenEndpoint());

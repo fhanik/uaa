@@ -347,7 +347,7 @@ class OauthEndpointSecurityConfiguration {
     @Order(FilterChainOrder.OAUTH_05)
     UaaFilterChain tokenEndpointSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/oauth/token/**")
+                .securityMatcher("/oauth/token/**", "/z/*/oauth/token/**")
                 .authenticationManager(clientAuthenticationManager)
                 .authorizeHttpRequests( auth -> {
                     auth.requestMatchers("/**").access(anyOf().fullyAuthenticated());
@@ -373,10 +373,10 @@ class OauthEndpointSecurityConfiguration {
     @Order(FilterChainOrder.OAUTH_06)
     UaaFilterChain statelessAuthzEndpointSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher(oauthAuthorizeRequestMatcher)
+                .securityMatcher(oauthAuthorizeRequestMatcher.withZonePaths())
                 .authenticationManager(zoneAwareAuthzAuthenticationManager)
                 .authorizeHttpRequests( auth -> {
-                    auth.requestMatchers(oauthAuthorizeRequestMatcher).access(anyOf().fullyAuthenticated());
+                    auth.requestMatchers(oauthAuthorizeRequestMatcher.withZonePaths()).access(anyOf().fullyAuthenticated());
                     auth.anyRequest().denyAll();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -397,9 +397,9 @@ class OauthEndpointSecurityConfiguration {
     @Order(FilterChainOrder.OAUTH_07)
     UaaFilterChain statelessAuthorizeApiSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher(oauthAuthorizeApiRequestMatcher)
+                .securityMatcher(oauthAuthorizeApiRequestMatcher.withZonePaths())
                 .authorizeHttpRequests( auth -> {
-                    auth.requestMatchers(oauthAuthorizeApiRequestMatcher).access(anyOf(true).hasScope("uaa.user").isUaaAdmin().isZoneAdmin());
+                    auth.requestMatchers(oauthAuthorizeApiRequestMatcher.withZonePaths()).access(anyOf(true).hasScope("uaa.user").isUaaAdmin().isZoneAdmin());
                     auth.anyRequest().denyAll();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -420,9 +420,9 @@ class OauthEndpointSecurityConfiguration {
     @Order(FilterChainOrder.OAUTH_08)
     UaaFilterChain promptStatelessTokenApiSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher(promptOauthAuthorizeApiRequestMatcher)
+                .securityMatcher(promptOauthAuthorizeApiRequestMatcher.withZonePaths())
                 .authorizeHttpRequests( auth -> {
-                    auth.requestMatchers(promptOauthAuthorizeApiRequestMatcher).fullyAuthenticated();
+                    auth.requestMatchers(promptOauthAuthorizeApiRequestMatcher.withZonePaths()).fullyAuthenticated();
                     auth.anyRequest().denyAll();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.NEVER))
@@ -467,10 +467,10 @@ class OauthEndpointSecurityConfiguration {
     @Order(FilterChainOrder.OAUTH_10)
     UaaFilterChain oldAuthzEndpointSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher(oauthAuthorizeRequestMatcherOld)
+                .securityMatcher(oauthAuthorizeRequestMatcherOld.withZonePaths())
                 .authenticationManager(zoneAwareAuthzAuthenticationManager)
                 .authorizeHttpRequests( auth -> {
-                    auth.requestMatchers(oauthAuthorizeRequestMatcherOld).access(anyOf().fullyAuthenticated());
+                    auth.requestMatchers(oauthAuthorizeRequestMatcherOld.withZonePaths()).access(anyOf().fullyAuthenticated());
                     auth.anyRequest().denyAll();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.NEVER))

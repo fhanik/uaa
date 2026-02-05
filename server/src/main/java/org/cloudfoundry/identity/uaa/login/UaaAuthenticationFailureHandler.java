@@ -24,6 +24,8 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.security.web.authentication.ExceptionMappingAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.logout.LogoutHandler;
+import org.springframework.security.web.RedirectStrategy;
+import org.springframework.security.web.DefaultRedirectStrategy;
 import org.springframework.stereotype.Component;
 
 import jakarta.servlet.ServletException;
@@ -54,17 +56,39 @@ public class UaaAuthenticationFailureHandler implements AuthenticationFailureHan
                 )
         );
         handler.setDefaultFailureUrl("/login?error=login_failure");
+        handler.setRedirectStrategy(new ZoneAwareRedirectStrategy());
         return handler;
+    }
+
+    /**
+     * Prepend zone path prefix (e.g. /z/{subdomain}) to redirect URLs when the request is under /z/{subdomain}/....
+     * Otherwise delegates to DefaultRedirectStrategy unchanged.
+     */
+    private static final class ZoneAwareRedirectStrategy implements RedirectStrategy {
+        private final RedirectStrategy defaultStrategy = new DefaultRedirectStrategy();
+
+        @Override
+        public void sendRedirect(HttpServletRequest request, HttpServletResponse response, String url) throws IOException {
+            String zonePrefix = getZonePathPrefix(request);
+            String targetUrl = url;
+            if (!zonePrefix.isEmpty() && url.startsWith("/") && !url.startsWith(zonePrefix)) {
+                targetUrl = zonePrefix + url;
+            }
+            defaultStrategy.sendRedirect(request, response, targetUrl);
+        }
     }
 
     public UaaAuthenticationFailureHandler(ExceptionMappingAuthenticationFailureHandler delegate, CurrentUserCookieFactory currentUserCookieFactory) {
         this.delegate = delegate;
         this.currentUserCookieFactory = currentUserCookieFactory;
+        if (delegate != null) {
+            delegate.setRedirectStrategy(new ZoneAwareRedirectStrategy());
+        }
     }
 
     @Override
     public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response, AuthenticationException exception) throws IOException, ServletException {
-        addCookie(response);
+        addCookie(request, response);
         if (exception instanceof PasswordChangeRequiredException passwordChangeRequiredException) {
             SessionUtils.setForcePasswordExpiredUser(request.getSession(),
                     passwordChangeRequiredException.getAuthentication());
@@ -77,11 +101,36 @@ public class UaaAuthenticationFailureHandler implements AuthenticationFailureHan
 
     @Override
     public void logout(HttpServletRequest request, HttpServletResponse response, Authentication authentication) {
-        addCookie(response);
+        addCookie(request, response);
     }
 
-    private void addCookie(HttpServletResponse response) {
+    private void addCookie(HttpServletRequest request, HttpServletResponse response) {
         Cookie clearCurrentUserCookie = currentUserCookieFactory.getNullCookie();
+        String zonePrefix = getZonePathPrefix(request);
+        if (!zonePrefix.isEmpty()) {
+            clearCurrentUserCookie.setPath(zonePrefix);
+        }
         response.addCookie(clearCurrentUserCookie);
+    }
+
+    /**
+     * Returns the zone path prefix (e.g. /z/test-zone) if the request is under /z/{subdomain}/..., otherwise "".
+     * Uses context path and request URI to determine the path after the context.
+     */
+    static String getZonePathPrefix(HttpServletRequest request) {
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String requestURI = request.getRequestURI() != null ? request.getRequestURI() : "";
+        String path = requestURI.startsWith(contextPath) ? requestURI.substring(contextPath.length()) : requestURI;
+        if (path.isEmpty()) {
+            path = "/";
+        }
+        if (path.startsWith("/z/")) {
+            int secondSlash = path.indexOf('/', 3);
+            if (secondSlash > 0) {
+                return path.substring(0, secondSlash);
+            }
+            return path;
+        }
+        return "";
     }
 }

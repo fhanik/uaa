@@ -50,7 +50,8 @@ class ScimSecurityConfiguration {
     @Order(FilterChainOrder.SCIM_PASSWORD)
     UaaFilterChain scimUserPassword(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/Users/*/password", "/Users/*/password/**")
+                .securityMatcher("/Users/*/password", "/Users/*/password/**",
+                        "/z/{subdomain}/Users/*/password", "/z/{subdomain}/Users/*/password/**")
                 .authorizeHttpRequests( auth -> {
                     auth.requestMatchers("/**").access(anyOf(true).hasScope("password.write"));
                     auth.anyRequest().denyAll();
@@ -73,7 +74,8 @@ class ScimSecurityConfiguration {
     @Order(FilterChainOrder.SCIM)
     UaaFilterChain scimUserIds(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/ids/Users", "/ids/Users*", "/ids/Users/**")
+                .securityMatcher("/ids/Users", "/ids/Users*", "/ids/Users/**",
+                        "/z/{subdomain}/ids/Users", "/z/{subdomain}/ids/Users*", "/z/{subdomain}/ids/Users/**")
                 .authorizeHttpRequests( auth -> {
                     auth.requestMatchers("/**").access(anyOf(true).hasScope("scim.userids"));
                     auth.anyRequest().denyAll();
@@ -96,18 +98,18 @@ class ScimSecurityConfiguration {
     @Order(FilterChainOrder.SCIM)
     UaaFilterChain groupEndpointSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/Groups", "/Groups/**")
+                .securityMatcher("/Groups", "/Groups/**", "/z/{subdomain}/Groups", "/z/{subdomain}/Groups/**")
                 .authorizeHttpRequests( auth -> {
-                    auth.requestMatchers("/Groups/zones").access(anyOf(true).hasScope("scim.zones"));
-                    auth.requestMatchers("/Groups/zones/**").access(anyOf(true).hasScope("scim.zones"));
-                    auth.requestMatchers(HttpMethod.GET, "/Groups/External").access(anyOf(true).hasScope("scim.read").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.POST, "/Groups/External").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.DELETE, "/Groups/**").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.PUT, "/Groups/**").access(anyOf(true).hasScope("scim.write", "groups.update").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.POST, "/Groups/**").access(anyOf(true).hasScope("scim.write", "groups.update").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.GET, "/Groups/**").access(anyOf(true).hasScope("scim.read").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.PATCH, "/Groups/**").access(anyOf(true).hasScope("scim.write", "groups.update").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.POST, "/Groups").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
+                    auth.requestMatchers("/Groups/zones", "/z/{subdomain}/Groups/zones").access(anyOf(true).hasScope("scim.zones"));
+                    auth.requestMatchers("/Groups/zones/**", "/z/{subdomain}/Groups/zones/**").access(anyOf(true).hasScope("scim.zones"));
+                    auth.requestMatchers(HttpMethod.GET, "/Groups/External", "/z/{subdomain}/Groups/External").access(anyOf(true).hasScope("scim.read").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.POST, "/Groups/External", "/z/{subdomain}/Groups/External").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.DELETE, "/Groups/**", "/z/{subdomain}/Groups/**").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.PUT, "/Groups/**", "/z/{subdomain}/Groups/**").access(anyOf(true).hasScope("scim.write", "groups.update").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.POST, "/Groups/**", "/z/{subdomain}/Groups/**").access(anyOf(true).hasScope("scim.write", "groups.update").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.GET, "/Groups/**", "/z/{subdomain}/Groups/**").access(anyOf(true).hasScope("scim.read").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.PATCH, "/Groups/**", "/z/{subdomain}/Groups/**").access(anyOf(true).hasScope("scim.write", "groups.update").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.POST, "/Groups", "/z/{subdomain}/Groups").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
                     auth.anyRequest().denyAll();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -128,16 +130,16 @@ class ScimSecurityConfiguration {
     @Order(FilterChainOrder.SCIM)
     UaaFilterChain scimUsers(HttpSecurity http, @Qualifier("self") IsSelfCheck selfCheck) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/Users", "/Users/**")
+                .securityMatcher("/Users", "/Users/**", "/z/{subdomain}/Users", "/z/{subdomain}/Users/**")
                 .authorizeHttpRequests( auth -> {
-                    auth.requestMatchers(HttpMethod.GET, "/Users/*/verify-link").access(anyOf(true).hasScope("scim.create").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.GET, "/Users/*/verify").access(anyOf(true).hasScope("scim.write", "scim.create").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.PATCH, "/Users/*/status").access(anyOf(true).hasScope("scim.write", "uaa.account_status.write").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.GET, "/Users/**").access(anyOf(true).hasScope("scim.read").or(SelfCheckAuthorizationManager.isUserSelf(selfCheck, 1)).isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.DELETE, "/Users","/Users/*").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.PUT, "/Users","/Users/*").access(anyOf(true).hasScope("scim.write").or(SelfCheckAuthorizationManager.isUserSelf(selfCheck, 1)).isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.PATCH, "/Users","/Users/*").access(anyOf(true).hasScope("scim.write").or(SelfCheckAuthorizationManager.isUserSelf(selfCheck, 1)).isZoneAdmin());
-                    auth.requestMatchers(HttpMethod.POST, "/Users","/Users/*").access(anyOf(true).hasScope("scim.write", "scim.create").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.GET, "/Users/*/verify-link", "/z/{subdomain}/Users/*/verify-link").access(anyOf(true).hasScope("scim.create").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.GET, "/Users/*/verify", "/z/{subdomain}/Users/*/verify").access(anyOf(true).hasScope("scim.write", "scim.create").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.PATCH, "/Users/*/status", "/z/{subdomain}/Users/*/status").access(anyOf(true).hasScope("scim.write", "uaa.account_status.write").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.GET, "/Users/**", "/z/{subdomain}/Users/**").access(anyOf(true).hasScope("scim.read").or(SelfCheckAuthorizationManager.isUserSelf(selfCheck, 1)).isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.DELETE, "/Users", "/Users/*", "/z/{subdomain}/Users", "/z/{subdomain}/Users/*").access(anyOf(true).hasScope("scim.write").isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.PUT, "/Users", "/Users/*", "/z/{subdomain}/Users", "/z/{subdomain}/Users/*").access(anyOf(true).hasScope("scim.write").or(SelfCheckAuthorizationManager.isUserSelf(selfCheck, 1)).isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.PATCH, "/Users", "/Users/*", "/z/{subdomain}/Users", "/z/{subdomain}/Users/*").access(anyOf(true).hasScope("scim.write").or(SelfCheckAuthorizationManager.isUserSelf(selfCheck, 1)).isZoneAdmin());
+                    auth.requestMatchers(HttpMethod.POST, "/Users", "/Users/*", "/z/{subdomain}/Users", "/z/{subdomain}/Users/*").access(anyOf(true).hasScope("scim.write", "scim.create").isZoneAdmin());
                     auth.anyRequest().denyAll();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

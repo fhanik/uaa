@@ -211,17 +211,17 @@ public class LoginInfoEndpoint {
         return allIdentityProviders;
     }
 
-    @RequestMapping(value = {"/login"}, headers = "Accept=application/json")
+    @RequestMapping(value = {"/login", "/z/{subdomain}/login"}, headers = "Accept=application/json")
     public String infoForLoginJson(Model model, Principal principal, HttpServletRequest request) {
         return login(model, principal, emptyList(), true, request);
     }
 
-    @RequestMapping(value = {"/info"}, headers = "Accept=application/json")
+    @RequestMapping(value = {"/info", "/z/{subdomain}/info"}, headers = "Accept=application/json")
     public String infoForJson(Model model, Principal principal, HttpServletRequest request) {
         return login(model, principal, emptyList(), true, request);
     }
 
-    @RequestMapping(value = {"/login"}, headers = "Accept=text/html, */*")
+    @RequestMapping(value = {"/login", "/z/{subdomain}/login"}, headers = "Accept=text/html, */*")
     public String loginForHtml(Model model,
             Principal principal,
             HttpServletRequest request,
@@ -246,7 +246,7 @@ public class LoginInfoEndpoint {
         return login(model, principal, List.of(PASSCODE), false, request);
     }
 
-    @RequestMapping(value = {"/invalid_request"})
+    @RequestMapping(value = {"/invalid_request", "/z/{subdomain}/invalid_request"})
     public String invalidRequest() {
         return "invalid_request";
     }
@@ -625,7 +625,7 @@ public class LoginInfoEndpoint {
         return null;
     }
 
-    @RequestMapping(value = {"/delete_saved_account"})
+    @RequestMapping(value = {"/delete_saved_account", "/z/{subdomain}/delete_saved_account"})
     public String deleteSavedAccount(HttpServletRequest request, HttpServletResponse response, String userId) {
         Cookie cookie = UaaUrlUtils.createSavedCookie(userId, null);
         cookie.setMaxAge(0);
@@ -821,7 +821,7 @@ public class LoginInfoEndpoint {
         return null;
     }
 
-    @PostMapping(value = "/origin-chooser")
+    @PostMapping(value = {"/origin-chooser", "/z/{subdomain}/origin-chooser"})
     public String loginUsingOrigin(@RequestParam(required = false, name = LOGIN_HINT_ATTRIBUTE) String loginHint) {
         if (!StringUtils.hasText(loginHint)) {
             return "redirect:/login?discoveryPerformed=true";
@@ -830,7 +830,7 @@ public class LoginInfoEndpoint {
         return "redirect:/login?discoveryPerformed=true&login_hint=" + URLEncoder.encode(uaaLoginHint.toString(), UTF_8);
     }
 
-    @PostMapping(value = "/login/idp_discovery")
+    @PostMapping(value = {"/login/idp_discovery", "/z/{subdomain}/login/idp_discovery"})
     public String discoverIdentityProvider(@RequestParam String email, @RequestParam(required = false) String skipDiscovery, @RequestParam(required = false, name = LOGIN_HINT_ATTRIBUTE) String loginHint, @RequestParam(required = false, name = USERNAME_PARAMETER) String username, Model model, HttpSession session, HttpServletRequest request) {
         ClientDetails clientDetails = null;
         if (hasSavedOauthAuthorizeRequest(session)) {
@@ -879,7 +879,7 @@ public class LoginInfoEndpoint {
         return "idp_discovery/password";
     }
 
-    @PostMapping(value = "/autologin")
+    @PostMapping(value = {"/autologin", "/z/{subdomain}/autologin"})
     @ResponseBody
     public AutologinResponse generateAutologinCode(@RequestBody AutologinRequest request,
             @RequestHeader(value = "Authorization", required = false) String auth) {
@@ -921,7 +921,7 @@ public class LoginInfoEndpoint {
         return new AutologinResponse(expiringCode.getCode());
     }
 
-    @GetMapping(value = "/autologin")
+    @GetMapping(value = {"/autologin", "/z/{subdomain}/autologin"})
     public String performAutologin(HttpSession session) {
         String redirectLocation = "home";
         SavedRequest savedRequest = SessionUtils.getSavedRequestSession(session);
@@ -932,12 +932,12 @@ public class LoginInfoEndpoint {
         return REDIRECT + redirectLocation;
     }
 
-    @GetMapping(value = "/login_implicit")
+    @GetMapping(value = {"/login_implicit", "/z/{subdomain}/login_implicit"})
     public String captureImplicitValuesUsingJavascript() {
         return "login_implicit";
     }
 
-    @GetMapping(value = "/login/callback/{origin}")
+    @GetMapping(value = {"/login/callback/{origin}", "/z/{subdomain}/login/callback/{origin}"})
     public String handleExternalOAuthCallback(final HttpSession session, @PathVariable String origin) {
         String redirectLocation = "/home";
         SavedRequest savedRequest = SessionUtils.getSavedRequestSession(session);

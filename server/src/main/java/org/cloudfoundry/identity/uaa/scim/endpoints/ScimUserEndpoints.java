@@ -220,7 +220,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         return errorCounts;
     }
 
-    @GetMapping("/Users/{userId}")
+    @GetMapping({"/Users/{userId}", "/z/{subdomain}/Users/{userId}"})
     @ResponseBody
     public ScimUser getUser(@PathVariable String userId, HttpServletResponse response) {
         ScimUser scimUser = syncApprovals(syncGroups(scimUserProvisioning.retrieve(userId, identityZoneManager.getCurrentIdentityZoneId())));
@@ -228,7 +228,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         return scimUser;
     }
 
-    @PostMapping({"/Users", "/Users/"})
+    @PostMapping({"/Users", "/Users/", "/z/{subdomain}/Users", "/z/{subdomain}/Users/"})
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
     public ScimUser createUser(@RequestBody ScimUser user, HttpServletRequest request, HttpServletResponse response) {
@@ -306,7 +306,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         return OriginKeys.UAA.equals(user.getOrigin());
     }
 
-    @PutMapping("/Users/{userId}")
+    @PutMapping({"/Users/{userId}", "/z/{subdomain}/Users/{userId}"})
     @ResponseBody
     public ScimUser updateUser(@RequestBody ScimUser user, @PathVariable String userId,
                                @RequestHeader(value = "If-Match", required = false, defaultValue = "NaN") String etag,
@@ -342,7 +342,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         return scimUserWithApprovalsAndGroups;
     }
 
-    @PatchMapping("/Users/{userId}")
+    @PatchMapping({"/Users/{userId}", "/z/{subdomain}/Users/{userId}"})
     @ResponseBody
     public ScimUser patchUser(@RequestBody ScimUser patch, @PathVariable String userId,
                               @RequestHeader(value = "If-Match", required = false, defaultValue = "NaN") String etag,
@@ -370,7 +370,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         }
     }
 
-    @DeleteMapping("/Users/{userId}")
+    @DeleteMapping({"/Users/{userId}", "/z/{subdomain}/Users/{userId}"})
     @ResponseBody
     @Transactional
     public ScimUser deleteUser(@PathVariable String userId,
@@ -431,7 +431,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         return user;
     }
 
-    @GetMapping("/Users/{userId}/verify-link")
+    @GetMapping({"/Users/{userId}/verify-link", "/z/{subdomain}/Users/{userId}/verify-link"})
     @ResponseBody
     public ResponseEntity<VerificationResponse> getUserVerificationLink(@PathVariable String userId,
                                                                         @RequestParam(value = "client_id", required = false) String clientId,
@@ -458,7 +458,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         return new ResponseEntity<>(responseBody, HttpStatus.OK);
     }
 
-    @GetMapping("/Users/{userId}/verify")
+    @GetMapping({"/Users/{userId}/verify", "/z/{subdomain}/Users/{userId}/verify"})
     @ResponseBody
     public ScimUser verifyUser(@PathVariable String userId,
                                @RequestHeader(value = "If-Match", required = false) String etag,
@@ -489,7 +489,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         }
     }
 
-    @GetMapping({"/Users", "/Users/"})
+    @GetMapping({"/Users", "/Users/", "/z/{subdomain}/Users", "/z/{subdomain}/Users/"})
     @ResponseBody
     public SearchResults<?> findUsers(
             @RequestParam(value = "attributes", required = false) String attributesCommaSeparated,
@@ -554,7 +554,7 @@ public class ScimUserEndpoints implements InitializingBean, ApplicationEventPubl
         }
     }
 
-    @PatchMapping("/Users/{userId}/status")
+    @PatchMapping({"/Users/{userId}/status", "/z/{subdomain}/Users/{userId}/status"})
     public UserAccountStatus updateAccountStatus(@RequestBody UserAccountStatus status, @PathVariable String userId) {
         ScimUser user = scimUserProvisioning.retrieve(userId, identityZoneManager.getCurrentIdentityZoneId());
 
