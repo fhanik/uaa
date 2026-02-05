@@ -25,7 +25,10 @@ import org.cloudfoundry.identity.uaa.scim.jdbc.JdbcScimGroupExternalMembershipMa
 import org.cloudfoundry.identity.uaa.scim.jdbc.JdbcScimGroupProvisioning;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpMethod;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
@@ -35,7 +38,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -458,8 +460,9 @@ class ScimGroupEndpointsMockMvcTests {
                     getSystemScopes(null).size() + 2 - 1).isEqualTo(searchResults.getResources().size());
         }
 
-        @Test
-        void getGroupsInOtherZone_withZoneUserToken_returnsOkWithResults() throws Exception {
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void getGroupsInOtherZone_withZoneUserToken_returnsOkWithResults(ZoneResolutionMode mode) throws Exception {
             String subdomain = new RandomValueStringGenerator(8).generate();
             UaaClientDetails bootstrapClient = null;
             MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(
@@ -475,8 +478,7 @@ class ScimGroupEndpointsMockMvcTests {
             ScimUser zoneUser = createUserAndAddToGroups(result.getIdentityZone(), Sets.newHashSet(Collections.singletonList("scim.read")));
 
             String basicDigestHeaderValue = "Basic " + new String(Base64.encodeBase64((zonedClientId + ":" + zonedClientSecret).getBytes()));
-            MockHttpServletRequestBuilder oauthTokenPost = post("/oauth/token")
-                    .with(new SetServerNameRequestPostProcessor(result.getIdentityZone().getSubdomain() + ".localhost"))
+            MockHttpServletRequestBuilder oauthTokenPost = mode.createRequestBuilder(result.getIdentityZone().getSubdomain(), HttpMethod.POST, "/oauth/token")
                     .header("Authorization", basicDigestHeaderValue)
                     .param("grant_type", "password")
                     .param("client_id", zonedClientId)
@@ -487,8 +489,7 @@ class ScimGroupEndpointsMockMvcTests {
             OAuthToken oauthToken = JsonUtils.readValue(tokenResult.getResponse().getContentAsString(), OAuthToken.class);
             String zoneUserToken = oauthToken.accessToken;
 
-            MockHttpServletRequestBuilder get = get("/Groups")
-                    .with(new SetServerNameRequestPostProcessor(result.getIdentityZone().getSubdomain() + ".localhost"))
+            MockHttpServletRequestBuilder get = mode.createRequestBuilder(result.getIdentityZone().getSubdomain(), HttpMethod.GET, "/Groups")
                     .header("Authorization", "Bearer " + zoneUserToken)
                     .param("attributes", "displayName")
                     .param("filter", "displayName co \"scim\"")
@@ -501,8 +502,7 @@ class ScimGroupEndpointsMockMvcTests {
             SearchResults searchResults = JsonUtils.readValue(mvcResult.getResponse().getContentAsString(), SearchResults.class);
             assertThat(searchResults.getResources()).hasSameSizeAs(getSystemScopes("scim"));
 
-            get = get("/Groups")
-                    .with(new SetServerNameRequestPostProcessor(result.getIdentityZone().getSubdomain() + ".localhost"))
+            get = mode.createRequestBuilder(result.getIdentityZone().getSubdomain(), HttpMethod.GET, "/Groups")
                     .header("Authorization", "Bearer " + zoneUserToken)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(APPLICATION_JSON);

@@ -10,7 +10,10 @@ import org.cloudfoundry.identity.uaa.scim.ScimUser;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpMethod;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -59,8 +62,9 @@ class IdentityZoneSwitchingFilterMockMvcTest {
         generator = new AlphanumericRandomValueStringGenerator();
     }
 
-    @Test
-    void switchingZones() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void switchingZones(ZoneResolutionMode mode) throws Exception {
         IdentityZone identityZone = createZone(mockMvc, identityToken);
         String zoneId = identityZone.getId();
         String zoneAdminToken = MockMvcUtils.getZoneAdminToken(mockMvc, adminToken, zoneId);
@@ -69,24 +73,22 @@ class IdentityZoneSwitchingFilterMockMvcTest {
         ClientDetails client = createClientInOtherZone(mockMvc, generator, zoneAdminToken, status().isCreated(), HEADER, zoneId);
 
         // Authenticate with new Client in new Zone
-        mockMvc.perform(post("/oauth/token")
+        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.POST, "/oauth/token")
                         .param("grant_type", "client_credentials")
-                        .with(httpBasic(client.getClientId(), client.getClientSecret()))
-                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
+                        .with(httpBasic(client.getClientId(), client.getClientSecret())))
                 .andExpect(status().isOk());
     }
 
-    @Test
-    void switchingZoneWithSubdomain() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void switchingZoneWithSubdomain(ZoneResolutionMode mode) throws Exception {
         IdentityZone identityZone = createZone(mockMvc, identityToken);
         String zoneAdminToken = MockMvcUtils.getZoneAdminToken(mockMvc, adminToken, identityZone.getId());
         ClientDetails client = createClientInOtherZone(mockMvc, generator, zoneAdminToken, status().isCreated(), SUBDOMAIN_HEADER, identityZone.getSubdomain());
 
-        mockMvc.perform(
-                        post("/oauth/token")
-                                .param("grant_type", "client_credentials")
-                                .with(httpBasic(client.getClientId(), client.getClientSecret()))
-                                .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
+        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.POST, "/oauth/token")
+                        .param("grant_type", "client_credentials")
+                        .with(httpBasic(client.getClientId(), client.getClientSecret())))
                 .andExpect(status().isOk());
     }
 

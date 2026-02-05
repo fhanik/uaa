@@ -2,7 +2,9 @@ package org.cloudfoundry.identity.uaa.provider.saml;
 
 import org.apache.hc.core5.http.HttpStatus;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
-import org.junit.jupiter.api.Test;
+import org.cloudfoundry.identity.uaa.util.ZoneRequestPathMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
@@ -21,8 +23,9 @@ import static org.mockito.Mockito.when;
 
 class SamlLoginAuthenticationFailureHandlerTest {
 
-    @Test
-    void errorRedirect() throws IOException, ServletException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void errorRedirect(ZoneRequestPathMode mode) throws IOException, ServletException {
         SamlLoginAuthenticationFailureHandler handler = new SamlLoginAuthenticationFailureHandler();
 
         DefaultSavedRequest savedRequest = mock(DefaultSavedRequest.class);
@@ -33,6 +36,7 @@ class SamlLoginAuthenticationFailureHandlerTest {
         MockHttpSession session = new MockHttpSession();
         SessionUtils.setSavedRequestSession(session, savedRequest);
         MockHttpServletRequest request = new MockHttpServletRequest();
+        mode.applyRequestPath(request, "/saml/callback");
         request.setSession(session);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -40,13 +44,13 @@ class SamlLoginAuthenticationFailureHandlerTest {
         handler.onAuthenticationFailure(request, response, exception);
 
         String actual = response.getRedirectedUrl();
-        assertThat(actual).isEqualTo("https://example.com?error=access_denied&error_description=Denied%21");
-        int status = response.getStatus();
-        assertThat(status).isEqualTo(HttpStatus.SC_MOVED_TEMPORARILY);
+        assertRedirectUrl(actual, "https://example.com?error=access_denied&error_description=Denied%21", mode);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_MOVED_TEMPORARILY);
     }
 
-    @Test
-    void errorRedirectWithExistingQueryParameters() throws IOException, ServletException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void errorRedirectWithExistingQueryParameters(ZoneRequestPathMode mode) throws IOException, ServletException {
         SamlLoginAuthenticationFailureHandler handler = new SamlLoginAuthenticationFailureHandler();
 
         DefaultSavedRequest savedRequest = mock(DefaultSavedRequest.class);
@@ -57,6 +61,7 @@ class SamlLoginAuthenticationFailureHandlerTest {
         MockHttpSession session = new MockHttpSession();
         SessionUtils.setSavedRequestSession(session, savedRequest);
         MockHttpServletRequest request = new MockHttpServletRequest();
+        mode.applyRequestPath(request, "/saml/callback");
         request.setSession(session);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -64,13 +69,13 @@ class SamlLoginAuthenticationFailureHandlerTest {
         handler.onAuthenticationFailure(request, response, exception);
 
         String actual = response.getRedirectedUrl();
-        assertThat(actual).isEqualTo("https://example.com?go=bears&error=access_denied&error_description=Denied%21");
-        int status = response.getStatus();
-        assertThat(status).isEqualTo(HttpStatus.SC_MOVED_TEMPORARILY);
+        assertRedirectUrl(actual, "https://example.com?go=bears&error=access_denied&error_description=Denied%21", mode);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_MOVED_TEMPORARILY);
     }
 
-    @Test
-    void someOtherErrorCondition() throws IOException, ServletException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void someOtherErrorCondition(ZoneRequestPathMode mode) throws IOException, ServletException {
         SamlLoginAuthenticationFailureHandler handler = new SamlLoginAuthenticationFailureHandler();
 
         DefaultSavedRequest savedRequest = mock(DefaultSavedRequest.class);
@@ -81,6 +86,7 @@ class SamlLoginAuthenticationFailureHandlerTest {
         MockHttpSession session = new MockHttpSession();
         SessionUtils.setSavedRequestSession(session, savedRequest);
         MockHttpServletRequest request = new MockHttpServletRequest();
+        mode.applyRequestPath(request, "/saml/callback");
         request.setSession(session);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -93,29 +99,30 @@ class SamlLoginAuthenticationFailureHandlerTest {
         };
         handler.onAuthenticationFailure(request, response, exception);
         String actual = response.getRedirectedUrl();
-        assertThat(actual).isNull();
-        int status = response.getStatus();
-        assertThat(status).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
+        assertRedirectUrl(actual, null, mode);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
     }
 
-    @Test
-    void noSession() throws IOException, ServletException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void noSession(ZoneRequestPathMode mode) throws IOException, ServletException {
         SamlLoginAuthenticationFailureHandler handler = new SamlLoginAuthenticationFailureHandler();
 
         MockHttpServletRequest request = new MockHttpServletRequest();
+        mode.applyRequestPath(request, "/saml/callback");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         SamlLoginException exception = new SamlLoginException("Denied!");
         handler.onAuthenticationFailure(request, response, exception);
 
         String actual = response.getRedirectedUrl();
-        assertThat(actual).isNull();
-        int status = response.getStatus();
-        assertThat(status).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
+        assertRedirectUrl(actual, null, mode);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
     }
 
-    @Test
-    void noSavedRequest() throws IOException, ServletException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void noSavedRequest(ZoneRequestPathMode mode) throws IOException, ServletException {
         SamlLoginAuthenticationFailureHandler handler = new SamlLoginAuthenticationFailureHandler();
 
         DefaultSavedRequest savedRequest = mock(DefaultSavedRequest.class);
@@ -125,6 +132,7 @@ class SamlLoginAuthenticationFailureHandlerTest {
 
         MockHttpSession session = new MockHttpSession();
         MockHttpServletRequest request = new MockHttpServletRequest();
+        mode.applyRequestPath(request, "/saml/callback");
         request.setSession(session);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -132,13 +140,13 @@ class SamlLoginAuthenticationFailureHandlerTest {
         handler.onAuthenticationFailure(request, response, exception);
 
         String actual = response.getRedirectedUrl();
-        assertThat(actual).isNull();
-        int status = response.getStatus();
-        assertThat(status).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
+        assertRedirectUrl(actual, null, mode);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
     }
 
-    @Test
-    void noRedirectURI() throws IOException, ServletException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void noRedirectURI(ZoneRequestPathMode mode) throws IOException, ServletException {
         SamlLoginAuthenticationFailureHandler handler = new SamlLoginAuthenticationFailureHandler();
 
         DefaultSavedRequest savedRequest = mock(DefaultSavedRequest.class);
@@ -148,14 +156,42 @@ class SamlLoginAuthenticationFailureHandlerTest {
         MockHttpSession session = new MockHttpSession();
         SessionUtils.setSavedRequestSession(session, savedRequest);
         MockHttpServletRequest request = new MockHttpServletRequest();
+        mode.applyRequestPath(request, "/saml/callback");
         request.setSession(session);
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         SamlLoginException exception = new SamlLoginException("Denied!");
         handler.onAuthenticationFailure(request, response, exception);
         String actual = response.getRedirectedUrl();
-        assertThat(actual).isNull();
-        int status = response.getStatus();
-        assertThat(status).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
+        assertRedirectUrl(actual, null, mode);
+        assertThat(response.getStatus()).isEqualTo(HttpStatus.SC_UNAUTHORIZED);
+    }
+
+    /**
+     * Asserts redirect URL: server-relative paths (starting with "/") must start with "/z/{subdomain}" when
+     * mode is ZONE_PATH and must not start with "/z/" when mode is DEFAULT. External URLs and null are compared as-is.
+     */
+    private static void assertRedirectUrl(String actual, String expected, ZoneRequestPathMode mode) {
+        System.out.println("[assertRedirectUrl] mode=" + mode + ", actual=" + actual + ", expected=" + expected);
+        if (expected == null) {
+            System.out.println("[assertRedirectUrl] asserting actual is null; actual=" + actual + ", expected=" + expected);
+            assertThat(actual).isNull();
+        } else if (expected.startsWith("/")) {
+            String expectedWithPrefix = mode.redirectPrefix() + expected;
+            System.out.println("[assertRedirectUrl] server path: asserting actual == expectedWithPrefix; actual=" + actual + ", expected=" + expected + ", expectedWithPrefix=" + expectedWithPrefix);
+            assertThat(actual).isEqualTo(expectedWithPrefix);
+        } else {
+            System.out.println("[assertRedirectUrl] external URL: asserting actual == expected; actual=" + actual + ", expected=" + expected);
+            assertThat(actual).isEqualTo(expected);
+        }
+        if (actual != null && actual.startsWith("/")) {
+            if (mode == ZoneRequestPathMode.ZONE_PATH) {
+                System.out.println("[assertRedirectUrl] asserting actual path starts with \"/z/" + mode.getSubdomain() + "\"; actual=" + actual + ", expected=" + expected);
+                assertThat(actual).startsWith("/z/" + mode.getSubdomain());
+            } else {
+                System.out.println("[assertRedirectUrl] asserting actual path does not start with \"/z/\"; actual=" + actual + ", expected=" + expected);
+                assertThat(actual).doesNotStartWith("/z/");
+            }
+        }
     }
 }

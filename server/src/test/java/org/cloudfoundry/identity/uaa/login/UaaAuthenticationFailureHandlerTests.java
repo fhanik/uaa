@@ -34,8 +34,10 @@ import org.cloudfoundry.identity.uaa.authentication.AuthenticationPolicyRejectio
 import org.cloudfoundry.identity.uaa.authentication.PasswordChangeRequiredException;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
+import org.cloudfoundry.identity.uaa.util.ZoneRequestPathMode;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -64,30 +66,38 @@ class UaaAuthenticationFailureHandlerTests {
         response = new MockHttpServletResponse();
     }
 
-    @Test
-    void onAuthenticationFailure() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void onAuthenticationFailure(ZoneRequestPathMode mode) throws Exception {
+        mode.applyRequestPath(request, "/login.do");
         AuthenticationException exception = mock(AuthenticationException.class);
         uaaAuthenticationFailureHandler.onAuthenticationFailure(request, response, exception);
         verify(failureHandler, times(1)).onAuthenticationFailure(same(request), same(response), same(exception));
-        validateCookie();
+        validateCookie(mode);
     }
 
-    @Test
-    void onAuthenticationFailure_Without_Delegate() throws Exception {
-        AuthenticationException exception = mock(AuthenticationException.class);
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void onAuthenticationFailure_Without_Delegate(ZoneRequestPathMode mode) throws Exception {
+        mode.applyRequestPath(request, "/login.do");
         uaaAuthenticationFailureHandler = new UaaAuthenticationFailureHandler(null, cookieFactory);
+        AuthenticationException exception = mock(AuthenticationException.class);
         uaaAuthenticationFailureHandler.onAuthenticationFailure(request, response, exception);
-        validateCookie();
+        validateCookie(mode);
     }
 
-    @Test
-    void logout() {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void logout(ZoneRequestPathMode mode) {
+        mode.applyRequestPath(request, "/login");
         uaaAuthenticationFailureHandler.logout(request, response, mock(Authentication.class));
-        validateCookie();
+        validateCookie(mode);
     }
 
-    @Test
-    void onAuthenticationFailure_ForcePasswordChange() throws IOException, ServletException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void onAuthenticationFailure_ForcePasswordChange(ZoneRequestPathMode mode) throws IOException, ServletException {
+        mode.applyRequestPath(request, "/login.do");
         UaaAuthentication uaaAuthentication = mock(UaaAuthentication.class);
         PasswordChangeRequiredException exception = new PasswordChangeRequiredException(uaaAuthentication, "mock");
         uaaAuthenticationFailureHandler.onAuthenticationFailure(request, response, exception);
@@ -95,40 +105,93 @@ class UaaAuthenticationFailureHandlerTests {
         assertThat(uaaAuthenticationFromSession)
                 .isNotNull()
                 .isEqualTo(uaaAuthentication);
-        validateCookie();
-        assertThat(response.getRedirectedUrl()).isEqualTo("/force_password_change");
+        validateCookie(mode);
+        assertThat(response.getRedirectedUrl()).isEqualTo(mode.redirectPrefix() + "/force_password_change");
     }
 
-    @Test
-    void redirectUrls() throws ServletException, IOException {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void redirectUrls(ZoneRequestPathMode mode) throws ServletException, IOException {
         var handler = new UaaAuthenticationFailureHandler(cookieFactory);
+        String redirectPrefix = mode.redirectPrefix();
 
-        var response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/login.do");
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
         handler.onAuthenticationFailure(request, response, new AccountNotVerifiedException("test"));
-        assertThat(response.getRedirectedUrl()).isEqualTo("/login?error=account_not_verified");
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=account_not_verified");
 
         response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/login.do");
         handler.onAuthenticationFailure(request, response, new AuthenticationPolicyRejectionException("test"));
-        assertThat(response.getRedirectedUrl()).isEqualTo("/login?error=account_locked");
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=account_locked");
 
         response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/login.do");
         handler.onAuthenticationFailure(request, response, new AccountNotPreCreatedException("test"));
-        assertThat(response.getRedirectedUrl()).isEqualTo("/login?error=account_not_precreated");
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=account_not_precreated");
 
         response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/force_password_change");
         handler.onAuthenticationFailure(request, response, new PasswordChangeRequiredException(mock(UaaAuthentication.class), "test"));
-        assertThat(response.getRedirectedUrl()).isEqualTo("/force_password_change");
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/force_password_change");
 
         response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/login.do");
         handler.onAuthenticationFailure(request, response, new BadCredentialsException("test"));
-        assertThat(response.getRedirectedUrl()).isEqualTo("/login?error=login_failure");
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=login_failure");
+        validateCookie(response, mode);
     }
 
-    private void validateCookie() {
+    @ParameterizedTest
+    @EnumSource(ZoneRequestPathMode.class)
+    void redirectUrlsWithContextPath(ZoneRequestPathMode mode) throws ServletException, IOException {
+        var handler = new UaaAuthenticationFailureHandler(cookieFactory);
+        request.setContextPath("/uaa");
+        String redirectPrefix = "/uaa" + mode.redirectPrefix();
+
+        mode.applyRequestPath(request, "/login.do");
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        handler.onAuthenticationFailure(request, response, new AccountNotVerifiedException("test"));
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=account_not_verified");
+
+        response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/login.do");
+        handler.onAuthenticationFailure(request, response, new AuthenticationPolicyRejectionException("test"));
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=account_locked");
+
+        response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/login.do");
+        handler.onAuthenticationFailure(request, response, new AccountNotPreCreatedException("test"));
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=account_not_precreated");
+
+        response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/force_password_change");
+        handler.onAuthenticationFailure(request, response, new PasswordChangeRequiredException(mock(UaaAuthentication.class), "test"));
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/force_password_change");
+
+        response = new MockHttpServletResponse();
+        mode.applyRequestPath(request, "/login.do");
+        handler.onAuthenticationFailure(request, response, new BadCredentialsException("test"));
+        assertThat(response.getRedirectedUrl()).isEqualTo(redirectPrefix + "/login?error=login_failure");
+        validateCookie(response, mode);
+    }
+
+    private void validateCookie(ZoneRequestPathMode mode) {
+        validateCookie(response, mode);
+    }
+
+    private void validateCookie(MockHttpServletResponse response, ZoneRequestPathMode mode) {
         Cookie cookie = response.getCookie("Current-User");
         assertThat(cookie).isNotNull();
         assertThat(cookie.getMaxAge()).isZero();
         assertThat(cookie.isHttpOnly()).isFalse();
+        if (mode == ZoneRequestPathMode.DEFAULT) {
+            assertThat(cookie.getPath()).isEqualTo("/");
+        } else {
+            assertThat(cookie.getPath()).startsWith("/z/" + mode.getSubdomain());
+        }
     }
 
 }

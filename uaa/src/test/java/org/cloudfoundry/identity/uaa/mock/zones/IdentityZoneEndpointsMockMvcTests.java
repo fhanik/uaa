@@ -37,7 +37,10 @@ import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.KeyWithCertTest;
-import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpMethod;
 import org.cloudfoundry.identity.uaa.util.beans.DbUtils;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation.Banner;
@@ -1977,8 +1980,9 @@ class IdentityZoneEndpointsMockMvcTests {
 
     }
 
-    @Test
-    void successfulUserManagementInZoneUsingAdminClient() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void successfulUserManagementInZoneUsingAdminClient(ZoneResolutionMode mode) throws Exception {
         String subdomain = generator.generate().toLowerCase();
         UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials", "scim.read,scim.write");
         adminClient.setClientSecret("admin-secret");
@@ -1990,16 +1994,15 @@ class IdentityZoneEndpointsMockMvcTests {
         checkAuditEventListener(1, AuditEventType.ClientCreateSuccess, clientCreateEventListener, identityZone.getId(), "http://localhost:8080/uaa/oauth/token", creationResult.getZoneAdminUser().getId());
 
         String scimAdminToken = testClient.getClientCredentialsOAuthAccessToken("admin", "admin-secret", "scim.write,scim.read", subdomain);
-        ScimUser user = createUser(scimAdminToken, subdomain);
+        ScimUser user = createUser(mode, scimAdminToken, subdomain);
         checkAuditEventListener(1, AuditEventType.UserCreatedEvent, userModifiedEventListener, identityZone.getId(), "http://" + subdomain + ".localhost:8080/uaa/oauth/token", "admin");
 
         user.setUserName("updated-username@test.com");
-        MockHttpServletRequestBuilder put = put("/Users/" + user.getId())
+        MockHttpServletRequestBuilder put = mode.createRequestBuilder(subdomain, HttpMethod.PUT, "/Users/" + user.getId())
                 .header("Authorization", "Bearer " + scimAdminToken)
                 .header("If-Match", "\"" + user.getVersion() + "\"")
                 .contentType(APPLICATION_JSON)
-                .content(JsonUtils.writeValueAsString(user))
-                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+                .content(JsonUtils.writeValueAsString(user));
 
         MvcResult result = mockMvc.perform(put)
                 .andExpect(status().isOk())
@@ -2008,14 +2011,13 @@ class IdentityZoneEndpointsMockMvcTests {
 
         checkAuditEventListener(2, AuditEventType.UserModifiedEvent, userModifiedEventListener, identityZone.getId(), "http://" + subdomain + ".localhost:8080/uaa/oauth/token", "admin");
         user = JsonUtils.readValue(result.getResponse().getContentAsString(), ScimUser.class);
-        List<ScimUser> users = getUsersInZone(subdomain, scimAdminToken);
+        List<ScimUser> users = getUsersInZone(mode, subdomain, scimAdminToken);
         assertThat(users).containsExactly(user);
 
-        MockHttpServletRequestBuilder delete = delete("/Users/" + user.getId())
+        MockHttpServletRequestBuilder delete = mode.createRequestBuilder(subdomain, HttpMethod.DELETE, "/Users/" + user.getId())
                 .header("Authorization", "Bearer " + scimAdminToken)
                 .header("If-Match", "\"" + user.getVersion() + "\"")
-                .contentType(APPLICATION_JSON)
-                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+                .contentType(APPLICATION_JSON);
 
         mockMvc.perform(delete)
                 .andExpect(status().isOk())
@@ -2023,12 +2025,13 @@ class IdentityZoneEndpointsMockMvcTests {
                 .andReturn();
 
         checkAuditEventListener(3, AuditEventType.UserDeletedEvent, userModifiedEventListener, identityZone.getId(), "http://" + subdomain + ".localhost:8080/uaa/oauth/token", "admin");
-        users = getUsersInZone(subdomain, scimAdminToken);
+        users = getUsersInZone(mode, subdomain, scimAdminToken);
         assertThat(users).isEmpty();
     }
 
-    @Test
-    void createAndListUsersInOtherZoneIsUnauthorized() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void createAndListUsersInOtherZoneIsUnauthorized(ZoneResolutionMode mode) throws Exception {
         String subdomain = generator.generate();
         MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
 
@@ -2039,18 +2042,15 @@ class IdentityZoneEndpointsMockMvcTests {
         ScimUser user = getScimUser();
 
         byte[] requestBody = JsonUtils.writeValueAsBytes(user);
-        MockHttpServletRequestBuilder post = post("/Users")
-                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/Users")
                 .header("Authorization", "Bearer " + defaultZoneAdminToken)
                 .contentType(APPLICATION_JSON)
                 .content(requestBody);
 
         mockMvc.perform(post).andExpect(status().isUnauthorized());
 
-        MockHttpServletRequestBuilder get = get("/Users").header("Authorization", "Bearer " + defaultZoneAdminToken);
-        if (subdomain != null && !"".equals(subdomain)) {
-            get.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
-        }
+        MockHttpServletRequestBuilder get = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/Users")
+                .header("Authorization", "Bearer " + defaultZoneAdminToken);
 
         mockMvc.perform(get).andExpect(status().isUnauthorized()).andReturn();
     }
@@ -2277,16 +2277,17 @@ class IdentityZoneEndpointsMockMvcTests {
     }
 
     private ScimUser createUser(String token, String subdomain) throws Exception {
+        return createUser(ZoneResolutionMode.SUBDOMAIN, token, subdomain);
+    }
+
+    private ScimUser createUser(ZoneResolutionMode mode, String token, String subdomain) throws Exception {
         ScimUser user = getScimUser();
 
         byte[] requestBody = JsonUtils.writeValueAsBytes(user);
-        MockHttpServletRequestBuilder post = post("/Users")
+        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.POST, "/Users")
                 .header("Authorization", "Bearer " + token)
                 .contentType(APPLICATION_JSON)
                 .content(requestBody);
-        if (subdomain != null && !subdomain.isEmpty()) {
-            post.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
-        }
 
         MvcResult result = mockMvc.perform(post)
                 .andExpect(status().isCreated())
@@ -2413,10 +2414,12 @@ class IdentityZoneEndpointsMockMvcTests {
     }
 
     private List<ScimUser> getUsersInZone(String subdomain, String token) throws Exception {
-        MockHttpServletRequestBuilder get = get("/Users").header("Authorization", "Bearer " + token);
-        if (subdomain != null && !subdomain.isEmpty()) {
-            get.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
-        }
+        return getUsersInZone(ZoneResolutionMode.SUBDOMAIN, subdomain, token);
+    }
+
+    private List<ScimUser> getUsersInZone(ZoneResolutionMode mode, String subdomain, String token) throws Exception {
+        MockHttpServletRequestBuilder get = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.GET, "/Users")
+                .header("Authorization", "Bearer " + token);
 
         MvcResult mvcResult = mockMvc.perform(get).andExpect(status().isOk()).andReturn();
         JsonNode root = JsonUtils.readTree(mvcResult.getResponse().getContentAsString());

@@ -3,12 +3,14 @@ package org.cloudfoundry.identity.uaa.scim.endpoints;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.account.OpenIdConfiguration;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpMethod;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
@@ -44,58 +46,70 @@ class OpenIdConnectEndpointsMockMvcTests {
         deleteIdentityZone(identityZone.getId(), mockMvc);
     }
 
-    @Test
-    void wellKnownEndpoint() throws Exception {
-        for (String host : Arrays.asList("localhost", "subdomain.localhost")) {
-            for (String url : Arrays.asList("/.well-known/openid-configuration", "/oauth/token/.well-known/openid-configuration")) {
-                MockHttpServletResponse response = mockMvc.perform(
-                                get(url)
-                                        .header("Host", host)
-                                        .servletPath(url)
-                                        .with(new SetServerNameRequestPostProcessor(host))
-                                        .accept(APPLICATION_JSON))
-                        .andExpect(status().isOk())
-                        .andReturn().getResponse();
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void wellKnownEndpoint(ZoneResolutionMode mode) throws Exception {
+        for (String url : Arrays.asList("/.well-known/openid-configuration", "/oauth/token/.well-known/openid-configuration")) {
+            String servletPath = mode == ZoneResolutionMode.ZONE_PATH 
+                    ? "/z/" + identityZone.getSubdomain() + url 
+                    : url;
+            // For ZONE_PATH mode, use localhost (no subdomain); for SUBDOMAIN mode, use subdomain.localhost
+            String host = mode == ZoneResolutionMode.ZONE_PATH 
+                    ? "localhost" 
+                    : identityZone.getSubdomain() + ".localhost";
+            MockHttpServletResponse response = mockMvc.perform(
+                            mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, url)
+                                    .header("Host", host)
+                                    .servletPath(servletPath)
+                                    .accept(APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse();
 
-                OpenIdConfiguration openIdConfiguration = JsonUtils.readValue(response.getContentAsString(), OpenIdConfiguration.class);
-                assertThat(openIdConfiguration).isNotNull();
-                assertThat(openIdConfiguration.getIssuer()).isEqualTo("http://" + host + ":8080/uaa/oauth/token");
-                assertThat(openIdConfiguration.getAuthUrl()).isEqualTo("http://" + host + "/oauth/authorize");
-                assertThat(openIdConfiguration.getTokenUrl()).isEqualTo("http://" + host + "/oauth/token");
-                assertThat(openIdConfiguration.getTokenAMR()).containsExactly(new String[]{"client_secret_basic", "client_secret_post", "private_key_jwt"});
-                assertThat(openIdConfiguration.getTokenEndpointAuthSigningValues()).containsExactly(new String[]{"RS256", "HS256"});
-                assertThat(openIdConfiguration.getUserInfoUrl()).isEqualTo("http://" + host + "/userinfo");
-                assertThat(openIdConfiguration.getScopes()).containsExactly(new String[]{"openid", "profile", "email", "phone", ROLES, USER_ATTRIBUTES});
-                assertThat(openIdConfiguration.getResponseTypes()).containsExactly(new String[]{"code", "code id_token", "id_token", "token id_token"});
-                assertThat(openIdConfiguration.getIdTokenSigningAlgValues()).containsExactly(new String[]{"RS256", "HS256"});
-                assertThat(openIdConfiguration.getClaimTypesSupported()).containsExactly(new String[]{"normal"});
-                assertThat(openIdConfiguration.getClaimsSupported()).containsExactly(new String[]{"sub", "user_name", "origin", "iss", "auth_time", "amr", "acr", "client_id",
-                        "aud", "zid", "grant_type", "user_id", "azp", "scope", "exp", "iat", "jti", "rev_sig", "cid", "given_name", "family_name", "phone_number", "email"});
-                assertThat(openIdConfiguration.isClaimsParameterSupported()).isFalse();
-                assertThat(openIdConfiguration.getServiceDocumentation()).isEqualTo("http://docs.cloudfoundry.org/api/uaa/");
-                assertThat(openIdConfiguration.getUiLocalesSupported()).containsExactly(new String[]{"en-US"});
-            }
+            OpenIdConfiguration openIdConfiguration = JsonUtils.readValue(response.getContentAsString(), OpenIdConfiguration.class);
+            assertThat(openIdConfiguration).isNotNull();
+            // Note: The issuer URL is constructed from the identity zone's subdomain, not the request host
+            // So even in ZONE_PATH mode, the issuer URL contains the subdomain
+            assertThat(openIdConfiguration.getIssuer()).isEqualTo("http://" + identityZone.getSubdomain() + ".localhost:8080/uaa/oauth/token");
+            assertThat(openIdConfiguration.getAuthUrl()).isEqualTo("http://" + host + "/oauth/authorize");
+            assertThat(openIdConfiguration.getTokenUrl()).isEqualTo("http://" + host + "/oauth/token");
+            assertThat(openIdConfiguration.getTokenAMR()).containsExactly(new String[]{"client_secret_basic", "client_secret_post", "private_key_jwt"});
+            assertThat(openIdConfiguration.getTokenEndpointAuthSigningValues()).containsExactly(new String[]{"RS256", "HS256"});
+            assertThat(openIdConfiguration.getUserInfoUrl()).isEqualTo("http://" + host + "/userinfo");
+            assertThat(openIdConfiguration.getScopes()).containsExactly(new String[]{"openid", "profile", "email", "phone", ROLES, USER_ATTRIBUTES});
+            assertThat(openIdConfiguration.getResponseTypes()).containsExactly(new String[]{"code", "code id_token", "id_token", "token id_token"});
+            assertThat(openIdConfiguration.getIdTokenSigningAlgValues()).containsExactly(new String[]{"RS256", "HS256"});
+            assertThat(openIdConfiguration.getClaimTypesSupported()).containsExactly(new String[]{"normal"});
+            assertThat(openIdConfiguration.getClaimsSupported()).containsExactly(new String[]{"sub", "user_name", "origin", "iss", "auth_time", "amr", "acr", "client_id",
+                    "aud", "zid", "grant_type", "user_id", "azp", "scope", "exp", "iat", "jti", "rev_sig", "cid", "given_name", "family_name", "phone_number", "email"});
+            assertThat(openIdConfiguration.isClaimsParameterSupported()).isFalse();
+            assertThat(openIdConfiguration.getServiceDocumentation()).isEqualTo("http://docs.cloudfoundry.org/api/uaa/");
+            assertThat(openIdConfiguration.getUiLocalesSupported()).containsExactly(new String[]{"en-US"});
         }
     }
 
-    @Test
-    void userInfoEndpointIsCorrect() throws Exception {
-        for (String host : Arrays.asList("localhost", "subdomain.localhost")) {
-            for (String url : Arrays.asList("/.well-known/openid-configuration", "/oauth/token/.well-known/openid-configuration")) {
-                MockHttpServletResponse response = mockMvc.perform(
-                                get(url)
-                                        .header("Host", host)
-                                        .servletPath(url)
-                                        .with(new SetServerNameRequestPostProcessor(host))
-                                        .accept(APPLICATION_JSON))
-                        .andExpect(status().isOk())
-                        .andReturn().getResponse();
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void userInfoEndpointIsCorrect(ZoneResolutionMode mode) throws Exception {
+        for (String url : Arrays.asList("/.well-known/openid-configuration", "/oauth/token/.well-known/openid-configuration")) {
+            String servletPath = mode == ZoneResolutionMode.ZONE_PATH 
+                    ? "/z/" + identityZone.getSubdomain() + url 
+                    : url;
+            // For ZONE_PATH mode, use localhost (no subdomain); for SUBDOMAIN mode, use subdomain.localhost
+            String host = mode == ZoneResolutionMode.ZONE_PATH 
+                    ? "localhost" 
+                    : identityZone.getSubdomain() + ".localhost";
+            MockHttpServletResponse response = mockMvc.perform(
+                            mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, url)
+                                    .header("Host", host)
+                                    .servletPath(servletPath)
+                                    .accept(APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andReturn().getResponse();
 
-                OpenIdConfiguration openIdConfiguration = JsonUtils.readValue(response.getContentAsString(), OpenIdConfiguration.class);
+            OpenIdConfiguration openIdConfiguration = JsonUtils.readValue(response.getContentAsString(), OpenIdConfiguration.class);
 
-                mockMvc.perform(get(openIdConfiguration.getUserInfoUrl()))
-                        .andExpect(status().isUnauthorized());
-            }
+            mockMvc.perform(get(openIdConfiguration.getUserInfoUrl()))
+                    .andExpect(status().isUnauthorized());
         }
     }
 }

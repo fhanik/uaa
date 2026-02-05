@@ -47,9 +47,10 @@ import org.cloudfoundry.identity.uaa.user.UaaAuthority;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
 import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
+import org.cloudfoundry.identity.uaa.util.TimeService;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
-import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.util.UaaTokenUtils;
 import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
@@ -61,8 +62,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -979,8 +983,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(status().isOk());
     }
 
-    @Test
-    void clientIdentityProviderWithoutAllowedProvidersForPasswordGrantWorksInOtherZone() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void clientIdentityProviderWithoutAllowedProvidersForPasswordGrantWorksInOtherZone(ZoneResolutionMode mode) throws Exception {
         String scopes = "space.*.developer,space.*.admin,org.*.reader,org.123*.admin,*.*,*,openid";
 
         //a client without allowed providers in non default zone should always be rejected
@@ -1000,8 +1005,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         String userScopes = "space.1.developer,space.2.developer,org.1.reader,org.2.reader,org.12345.admin,scope.one,scope.two,scope.three,openid";
         setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, testZone.getId());
 
-        mockMvc.perform(post("/oauth/token")
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .param("username", username)
                         .param("password", "secret")
                         .with(httpBasic(clientId, SECRET))
@@ -1009,8 +1013,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                         .param(OAuth2Utils.CLIENT_ID, clientId))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/oauth/token")
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .param("username", username)
                         .param("password", "secret")
                         .with(httpBasic(clientId2, SECRET))
@@ -1021,23 +1024,38 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
 
     @Test
     void getToken_withPasswordGrantType_resultsInUserLastLogonTimestampUpdate() throws Exception {
-        long delayTime = 15;
+        TimeService timeService = webApplicationContext.getBean(TimeService.class);
+        long delayTime = 2;
         String username = "testuser" + generator.generate();
         String userScopes = "uaa.user";
         ScimUser user = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, userScopes, OriginKeys.UAA, IdentityZone.getUaaZoneId());
         webApplicationContext.getBean(UaaUserDatabase.class).updateLastLogonTime(user.getId());
         webApplicationContext.getBean(UaaUserDatabase.class).updateLastLogonTime(user.getId());
-
+        // On a fast processor there isn't enough granularity in the time; ensure the clock has moved
+        // before each password grant so we get distinct last-logon timestamps. Only sleep when needed.
+        // Use the same TimeService as production so we observe the same clock.
+        long afterSetup = timeService.getCurrentTimeMillis();
+        ensureClockMoved(timeService, afterSetup, delayTime);
         String accessToken = getAccessTokenForPasswordGrant(username);
         Long firstTimestamp = getPreviousLogonTime(accessToken);
-        //simulate two sequential tests
-        //on a fast processor, there isn't enough granularity in the time
-        Thread.sleep(delayTime);
+        long afterFirstGrant = timeService.getCurrentTimeMillis();
+        ensureClockMoved(timeService, afterFirstGrant, delayTime);
         String accessToken2 = getAccessTokenForPasswordGrant(username);
         Long secondTimestamp = getPreviousLogonTime(accessToken2);
 
         assertThat(secondTimestamp).isNotEqualTo(firstTimestamp);
         assertThat(firstTimestamp).isLessThan(secondTimestamp);
+    }
+
+    /**
+     * Waits until the application's {@link TimeService} clock has advanced past {@code notBefore}.
+     * Only sleeps when the clock has not yet moved, so fast runs avoid unnecessary delay.
+     * Uses the same TimeService as production (e.g. last-logon updates) so we observe the same clock.
+     */
+    private void ensureClockMoved(TimeService timeService, long notBefore, long sleepMs) throws InterruptedException {
+        while (timeService.getCurrentTimeMillis() <= notBefore) {
+            Thread.sleep(sleepMs);
+        }
     }
 
     private String getAccessTokenForPasswordGrant(String username) throws Exception {
@@ -1069,8 +1087,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         return userInfo.getPreviousLogonSuccess();
     }
 
-    @Test
-    void clientIdentityProviderClientWithoutAllowedProvidersForAuthCodeAlreadyLoggedInWorksInAnotherZone() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void clientIdentityProviderClientWithoutAllowedProvidersForAuthCodeAlreadyLoggedInWorksInAnotherZone(ZoneResolutionMode mode) throws Exception {
         //a client without allowed providers in non default zone should always be rejected
         String subdomain = "testzone" + generator.generate();
         IdentityZone testZone = setupIdentityZone(subdomain);
@@ -1100,9 +1119,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         IdentityZoneHolder.clear();
 
         //no providers is ok
-        mockMvc.perform(get("/oauth/authorize")
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/authorize")
                         .session(session)
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .param(OAuth2Utils.RESPONSE_TYPE, "code")
                         .param(OAuth2Utils.STATE, state)
                         .param(OAuth2Utils.CLIENT_ID, clientId)
@@ -1110,9 +1128,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(status().isFound());
 
         //correct provider is ok
-        MvcResult result = mockMvc.perform(get("/oauth/authorize")
+        MvcResult result = mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/authorize")
                         .session(session)
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .param(OAuth2Utils.RESPONSE_TYPE, "code")
                         .param(OAuth2Utils.STATE, state)
                         .param(OAuth2Utils.CLIENT_ID, clientId2)
@@ -1121,9 +1138,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andReturn();
 
         //other provider, not ok
-        mockMvc.perform(get("/oauth/authorize")
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/authorize")
                         .session(session)
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .param(OAuth2Utils.RESPONSE_TYPE, "code")
                         .param(OAuth2Utils.STATE, state)
                         .param(OAuth2Utils.CLIENT_ID, clientId3)
@@ -1175,8 +1191,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(status().isOk());
     }
 
-    @Test
-    void oauth_authorize_api_endpoint() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void oauth_authorize_api_endpoint(ZoneResolutionMode mode) throws Exception {
         String subdomain = "testzone" + generator.generate().toLowerCase();
         IdentityZone testZone = setupIdentityZone(subdomain, new ArrayList<>(defaultAuthorities));
         IdentityZoneHolder.set(testZone);
@@ -1203,9 +1220,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
 
         String state = generator.generate();
 
-        MockHttpServletRequestBuilder oauthAuthorizeGet = get("/oauth/authorize")
+        MockHttpServletRequestBuilder oauthAuthorizeGet = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/authorize")
                 .header("Authorization", "Bearer " + uaaUserAccessToken)
-                .header("Host", subdomain + ".localhost")
                 .param(RESPONSE_TYPE, "code")
                 .param(SCOPE, "")
                 .param(OAuth2Utils.STATE, state)
@@ -1222,9 +1238,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         String code = ((List<String>) query.get("code")).getFirst();
         assertThat(code).isNotNull();
 
-        String body = mockMvc.perform(post("/oauth/token")
+        String body = mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .with(httpBasic(clientId, SECRET))
-                        .header("Host", subdomain + ".localhost")
                         .accept(APPLICATION_JSON)
                         .param(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE)
                         .param(OAuth2Utils.CLIENT_ID, clientId)
@@ -3189,8 +3204,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         }
     }
 
-    @Test
-    void getClientCredentialsTokenForOtherIdentityZone() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void getClientCredentialsTokenForOtherIdentityZone(ZoneResolutionMode mode) throws Exception {
         String subdomain = "testzone" + generator.generate();
         IdentityZone testZone = setupIdentityZone(subdomain);
         IdentityZoneHolder.set(testZone);
@@ -3198,9 +3214,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         String scopes = "space.*.developer,space.*.admin,org.*.reader,org.123*.admin,*.*,*";
         setUpClients(clientId, scopes, scopes, GRANT_TYPES, true);
         IdentityZoneHolder.clear();
-        mockMvc.perform(post("http://" + subdomain + ".localhost/oauth/token")
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .accept(MediaType.APPLICATION_JSON_VALUE)
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .with(httpBasic(clientId, SECRET))
                         .param("grant_type", "client_credentials")
                         .param("client_id", clientId)
@@ -3208,8 +3223,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(status().isOk());
     }
 
-    @Test
-    void misconfigured_jwt_keys_returns_proper_error() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void misconfigured_jwt_keys_returns_proper_error(ZoneResolutionMode mode) throws Exception {
         String subdomain = "testzone" + generator.generate();
         IdentityZone testZone = setupIdentityZone(subdomain);
         testZone.getConfig().getTokenPolicy().setActiveKeyId("invalid-active-key");
@@ -3220,9 +3236,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         setUpClients(clientId, scopes, scopes, GRANT_TYPES, true);
         IdentityZoneHolder.clear();
 
-        mockMvc.perform(post("http://localhost/oauth/token")
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .accept(MediaType.APPLICATION_JSON_VALUE)
-                        .header("Host", subdomain + ".localhost")
                         .with(httpBasic(clientId, SECRET))
                         .param("grant_type", "client_credentials")
                         .param("client_id", clientId)
@@ -3252,16 +3267,16 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void getClientCredentialsTokenForDefaultIdentityZoneFromOtherZoneFails() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void getClientCredentialsTokenForDefaultIdentityZoneFromOtherZoneFails(ZoneResolutionMode mode) throws Exception {
         String clientId = "testclient" + generator.generate();
         String scopes = "space.*.developer,space.*.admin,org.*.reader,org.123*.admin,*.*,*";
         setUpClients(clientId, scopes, scopes, GRANT_TYPES, true);
         String subdomain = "testzone" + generator.generate();
         setupIdentityZone(subdomain);
-        mockMvc.perform(post("http://" + subdomain + ".localhost/oauth/token")
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .accept(MediaType.APPLICATION_JSON_VALUE)
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .with(httpBasic(clientId, SECRET))
                         .param("grant_type", "client_credentials")
                         .param("client_id", clientId)
@@ -3289,8 +3304,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(content().string("{\"error\":\"invalid_client\",\"error_description\":\"Bad credentials\"}"));
     }
 
-    @Test
-    void getPasswordGrantTokenExpiredPasswordForOtherZone() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void getPasswordGrantTokenExpiredPasswordForOtherZone(ZoneResolutionMode mode) throws Exception {
         String username = generator.generate() + "@test.org";
         String subdomain = "testzone" + generator.generate();
         IdentityZone testZone = setupIdentityZone(subdomain);
@@ -3311,8 +3327,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         setUpUser(username);
         IdentityZoneHolder.clear();
 
-        mockMvc.perform(post("/oauth/token")
-                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                 .param("username", username)
                 .param("password", "secret")
                 .with(httpBasic(clientId, SECRET))
@@ -3325,8 +3340,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         Timestamp t = new Timestamp(cal.getTimeInMillis());
         assertThat(webApplicationContext.getBean(JdbcTemplate.class).update("UPDATE users SET passwd_lastmodified = ? WHERE username = ?", t, username)).isOne();
 
-        mockMvc.perform(post("/oauth/token")
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .param("username", username)
                         .param("password", "secret")
                         .with(httpBasic(clientId, SECRET))
@@ -3336,8 +3350,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(content().string("{\"error\":\"unauthorized\",\"error_description\":\"password change required\"}"));
     }
 
-    @Test
-    void password_grant_with_default_user_groups_in_zone() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void password_grant_with_default_user_groups_in_zone(ZoneResolutionMode mode) throws Exception {
         String username = generator.generate() + "@test.org";
         String subdomain = "testzone" + generator.generate();
         String clientId = "testclient" + generator.generate();
@@ -3345,8 +3360,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         defaultGroups.addAll(UserConfig.DEFAULT_ZONE_GROUPS);
         createNonDefaultZone(username, subdomain, clientId, defaultGroups, "custom.default.group,openid");
 
-        MvcResult result = mockMvc.perform(post("/oauth/token")
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        MvcResult result = mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .param("username", username)
                         .param("password", "secret")
                         .with(httpBasic(clientId, SECRET))
@@ -3359,15 +3373,15 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         assertThat(claims.getScope()).containsExactlyInAnyOrder("openid", "custom.default.group");
     }
 
-    @Test
-    void getPasswordGrantTokenForOtherZone() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void getPasswordGrantTokenForOtherZone(ZoneResolutionMode mode) throws Exception {
         String username = generator.generate() + "@test.org";
         String subdomain = "testzone" + generator.generate();
         String clientId = "testclient" + generator.generate();
         createNonDefaultZone(username, subdomain, clientId);
 
-        MvcResult result = mockMvc.perform(post("/oauth/token")
-                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        MvcResult result = mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                         .param("username", username)
                         .param("password", "secret")
                         .with(httpBasic(clientId, SECRET))
@@ -3379,8 +3393,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         assertThat("http://" + subdomain.toLowerCase() + ".localhost:8080/uaa/oauth/token").isEqualTo(claims.getIss());
     }
 
-    @Test
-    void getPasswordGrantForDefaultIdentityZoneFromOtherZoneFails() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void getPasswordGrantForDefaultIdentityZoneFromOtherZoneFails(ZoneResolutionMode mode) throws Exception {
         String username = generator.generate() + "@test.org";
         String clientId = "testclient" + generator.generate();
         String scopes = "cloud_controller.read";
@@ -3393,8 +3408,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         setupIdentityProvider();
         IdentityZoneHolder.clear();
 
-        mockMvc.perform(post("/oauth/token")
-                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                 .param("username", username)
                 .param("password", "secret")
                 .with(httpBasic(clientId, SECRET))
@@ -3424,8 +3438,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .param(OAuth2Utils.CLIENT_ID, clientId)).andExpect(status().isUnauthorized());
     }
 
-    @Test
-    void getTokenScopesNotInAuthentication() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void getTokenScopesNotInAuthentication(ZoneResolutionMode mode) throws Exception {
         String subdomain = "testzone" + generator.generate().toLowerCase();
         IdentityZone testZone = setupIdentityZone(subdomain, new ArrayList<>(defaultAuthorities));
         IdentityZoneHolder.set(testZone);
@@ -3447,8 +3462,7 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         MockHttpSession session = getAuthenticatedSession(user);
 
         String state = generator.generate();
-        MockHttpServletRequestBuilder authRequest = get("/oauth/authorize")
-                .header("Host", subdomain + ".localhost")
+        MockHttpServletRequestBuilder authRequest = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/authorize")
                 .session(session)
                 .param(RESPONSE_TYPE, "code")
                 .param(OAuth2Utils.STATE, state)
@@ -3460,10 +3474,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(location);
         String code = builder.build().getQueryParams().get("code").getFirst();
 
-        authRequest = post("/oauth/token")
+        authRequest = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                 .with(httpBasic(clientId, SECRET))
                 .header("Accept", APPLICATION_JSON_VALUE)
-                .header("Host", subdomain + ".localhost")
                 .param(GRANT_TYPE, GRANT_TYPE_AUTHORIZATION_CODE)
                 .param("code", code)
                 .param(OAuth2Utils.REDIRECT_URI, "http://localhost/test");
@@ -3606,8 +3619,9 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         assertThat((Boolean) claims.get(ClaimConstants.REVOCABLE)).as("Token revocable claim must be set to true").isTrue();
     }
 
-    @Test
-    void nonDefaultZoneJwtRevocable() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void nonDefaultZoneJwtRevocable(ZoneResolutionMode mode) throws Exception {
         String username = generator.generate() + "@test.org";
         String subdomain = "testzone" + generator.generate();
         String clientId = "testclient" + generator.generate();
@@ -3618,9 +3632,8 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         try {
             defaultZone.getConfig().getTokenPolicy().setJwtRevocable(true);
             zoneProvisioning.update(defaultZone);
-            MockHttpServletRequestBuilder post = post("/oauth/token")
+            MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/token")
                     .with(httpBasic(clientId, SECRET))
-                    .header("Host", subdomain + ".localhost")
                     .param("username", username)
                     .param("password", "secret")
                     .param(OAuth2Utils.GRANT_TYPE, "password")

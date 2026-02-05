@@ -13,14 +13,16 @@ import org.cloudfoundry.identity.uaa.provider.JdbcIdentityProviderProvisioning;
 import org.cloudfoundry.identity.uaa.provider.OIDCIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.provider.oauth.OidcMetadataFetcher;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
-import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.http.HttpMethod;
 import org.cloudfoundry.identity.uaa.web.LimitedModeUaaFilter;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.MultitenancyFixture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -41,7 +43,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.CookieCsrfPostProcessor.cookieCsrf;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.createOtherIdentityZoneAndReturnResult;
 import static org.springframework.http.MediaType.TEXT_HTML;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @DefaultTestContext
@@ -92,8 +93,10 @@ class LoginPagePerformanceMockMvcTest {
         MockMvcUtils.resetLimitedModeStatusFile(webApplicationContext, originalLimitedModeStatusFile);
     }
 
-    @Test
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
     void idpDiscoveryRedirectsToOIDCProvider(
+            ZoneResolutionMode mode,
             @Autowired JdbcIdentityProviderProvisioning jdbcIdentityProviderProvisioning
     ) throws Exception {
         String subdomain = "oidc-discovery-" + generator.generate().toLowerCase();
@@ -121,10 +124,9 @@ class LoginPagePerformanceMockMvcTest {
         StopWatch stopWatch = new StopWatch();
         stopWatch.start();
         for (int i = 0; i < 1000; i++) {
-            MvcResult mvcResult = mockMvc.perform(get("/login")
+            MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
                             .with(cookieCsrf())
-                            .header("Accept", TEXT_HTML)
-                            .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
+                            .header("Accept", TEXT_HTML))
                     .andExpect(status().isOk())
                     .andReturn();
             MockHttpServletResponse response = mvcResult.getResponse();

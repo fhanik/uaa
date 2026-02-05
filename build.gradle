@@ -88,11 +88,13 @@ subprojects {
         testImplementation(libraries.junit5JupiterApi)
         testImplementation(libraries.junit5JupiterParams)
         testImplementation(libraries.junit5JupiterEngine)
+        testImplementation(libraries.junit5PlatformCommons)
+        testImplementation(libraries.junit5PlatformEngine)
         testImplementation(libraries.unboundIdLdapSdk)
         testRuntimeOnly(libraries.jacocoAgent)
 
-        // Ensure test runtime dependencies are included
-        testRuntimeOnly('org.junit.platform:junit-platform-launcher')
+        // Ensure test runtime dependencies are included (aligned with Jupiter 5.13 / Platform 1.13)
+        testRuntimeOnly(libraries.junit5PlatformLauncher)
 
         compileOnly(libraries.lombok)
         annotationProcessor(libraries.lombok)
