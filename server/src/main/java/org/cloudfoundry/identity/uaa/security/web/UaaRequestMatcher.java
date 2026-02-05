@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
 import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.util.Assert;
 
@@ -34,6 +36,7 @@ public final class UaaRequestMatcher implements RequestMatcher, BeanNameAware {
     private static final Logger logger = LoggerFactory.getLogger(UaaRequestMatcher.class);
 
     private final String path;
+    private final RequestMatcher pathPatternMatcher;
 
     private List<String> accepts;
 
@@ -46,11 +49,49 @@ public final class UaaRequestMatcher implements RequestMatcher, BeanNameAware {
     private String name;
 
     public UaaRequestMatcher(String path) {
+        this(path, false); //backwards compatible
+    }
+
+    public UaaRequestMatcher(String path, boolean withZonePaths) {
         Assert.hasText(path, "must have text");
+        Assert.isTrue(path.startsWith("/"), "path must start with '/'");
         if (path.contains("*")) {
             throw new IllegalArgumentException("UaaRequestMatcher is not intended for use with wildcards");
         }
         this.path = path;
+        List<PathPatternRequestMatcher>  matchers = new ArrayList<>();
+        matchers.add(PathPatternRequestMatcher.withDefaults().matcher(path + "*")); //starts with
+        matchers.add(PathPatternRequestMatcher.withDefaults().matcher(path + "/**")); //sub paths
+        if (withZonePaths) {
+            matchers.add(PathPatternRequestMatcher.withDefaults().matcher("/z/{id}" + path + "*"));
+            matchers.add(PathPatternRequestMatcher.withDefaults().matcher("/z/{id}" + path + "/**"));
+        }
+        this.pathPatternMatcher = new OrRequestMatcher(matchers.toArray(new PathPatternRequestMatcher[0]));
+    }
+
+    /**
+     * Generates a DEEP clone of the current matcher with the addition of also
+     * matching URLs that start with /z/{zone-identifier}/
+     * @return a cloned request matcher that matches on path based zone patterns
+     */
+    public UaaRequestMatcher withZonePaths() {
+        UaaRequestMatcher clone = new UaaRequestMatcher(path, true);
+        if (this.accepts != null) {
+            clone.accepts = new ArrayList<>(this.accepts);
+        }
+        if (!this.expectedHeaders.isEmpty()) {
+            clone.expectedHeaders.putAll(this.expectedHeaders);
+        }
+        if (this.parameters != null && !this.parameters.isEmpty()) {
+            clone.parameters.putAll(this.parameters);
+        }
+        if (this.method != null) {
+            clone.method = method;
+        }
+        if (this.name != null) {
+            clone.name = this.name;
+        }
+        return clone;
     }
 
     /**
@@ -92,7 +133,7 @@ public final class UaaRequestMatcher implements RequestMatcher, BeanNameAware {
             logger.trace("[{}] Checking match of request : '{}", name, message);
         }
 
-        if (!request.getRequestURI().startsWith(request.getContextPath() + path)) {
+        if (!pathPatternMatcher.matches(request)) {
             return false;
         }
 

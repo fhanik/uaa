@@ -14,7 +14,10 @@
 package org.cloudfoundry.identity.uaa.security.web;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedClass;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -25,18 +28,40 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  *
  */
+@ParameterizedClass
+@MethodSource("useZonePaths")
 class UaaRequestMatcherTests {
 
+    static Stream<Arguments> useZonePaths() {
+        return Stream.of(
+                Arguments.of(false, (String) null),
+                Arguments.of(true, UUID.randomUUID().toString())
+        );
+    }
+
+    private final boolean withZonePrefix;
+    private final String zoneId;
+    private final UaaRequestMatcher matcher;
+
+    UaaRequestMatcherTests(boolean withZonePrefix, String zoneId) {
+        this.withZonePrefix = withZonePrefix;
+        this.zoneId = zoneId;
+        this.matcher = new UaaRequestMatcher("/somePath", withZonePrefix);
+    }
+
     private MockHttpServletRequest request(String path, String accept, String... parameters) {
+        String actualPath = withZonePrefix ? "/z/" + zoneId + path : path;
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setContextPath("/ctx");
-        request.setRequestURI("/ctx" + path);
+        request.setRequestURI("/ctx" + actualPath);
         if (accept != null) {
             request.addHeader("Accept", accept);
         }
@@ -50,7 +75,6 @@ class UaaRequestMatcherTests {
 
     @Test
     void pathMatcherMatchesExpectedPaths() {
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         assertThat(matcher.matches(request("/somePath", null))).isTrue();
         assertThat(matcher.matches(request("/somePath", "application/json"))).isTrue();
         assertThat(matcher.matches(request("/somePath", "application/html"))).isTrue();
@@ -64,7 +88,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndAcceptHeaderNull() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         assertThat(matcher.matches(request("/somePath", null))).isTrue();
     }
@@ -78,7 +101,6 @@ class UaaRequestMatcherTests {
     })
     void pathMatcherMatchesExpectedPathsAndAcceptHeaderBlankOrEmpty(final String blankAcceptHeaderValue) {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
 
         assertThat(matcher.matches(request("/somePath", blankAcceptHeaderValue))).isFalse();
@@ -87,7 +109,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndMatchingAcceptHeader() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         assertThat(matcher.matches(request("/somePath", "application/json"))).isTrue();
     }
@@ -95,7 +116,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndNonMatchingAcceptHeader() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         assertThat(matcher.matches(request("/somePath", "application/html"))).isFalse();
     }
@@ -103,7 +123,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndRequestParameters() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         matcher.setParameters(Collections.singletonMap("response_type", "token"));
         assertThat(matcher.matches(request("/somePath", null, "response_type", "token"))).isTrue();
@@ -112,7 +131,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndMultipleRequestParameters() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         Map<String, String> params = new LinkedHashMap<>();
         params.put("source", "foo");
@@ -125,7 +143,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndEmptyParameters() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         matcher.setParameters(Collections.singletonMap("code", ""));
         assertThat(matcher.matches(request("/somePath", null, "code", "FOO"))).isTrue();
@@ -135,7 +152,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndRequestParametersWithAcceptHeader() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         matcher.setParameters(Collections.singletonMap("response_type", "token"));
         assertThat(matcher.matches(request("/somePath", "application/json", "response_type", "token"))).isTrue();
@@ -144,7 +160,6 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesExpectedPathsAndRequestParametersWithNonMatchingAcceptHeader() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         matcher.setParameters(Collections.singletonMap("response_type", "token"));
         assertThat(matcher.matches(request("/somePath", "application/html", "response_type", "token"))).isFalse();
@@ -153,18 +168,15 @@ class UaaRequestMatcherTests {
     @Test
     void pathMatcherMatchesWithMultipleAccepts() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON.toString()));
         assertThat(matcher
                 .matches(request("/somePath",
                         "%s,%s".formatted(MediaType.APPLICATION_JSON.toString(),
                                 MediaType.APPLICATION_XML.toString())))).isTrue();
     }
-
     @Test
     void pathMatcherMatchesWithMultipleAcceptTargets() {
         // Accept only JSON
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setAccept(Arrays.asList(MediaType.APPLICATION_JSON.toString(),
                 MediaType.APPLICATION_FORM_URLENCODED.toString()));
         assertThat(matcher
@@ -175,7 +187,6 @@ class UaaRequestMatcherTests {
 
     @Test
     void pathMatcherMatchesWithSingleHeader() {
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setHeaders(Collections.singletonMap("Authorization", Collections.singletonList("Basic")));
         MockHttpServletRequest testRequest = request(
                 "/somePath",
@@ -188,7 +199,6 @@ class UaaRequestMatcherTests {
 
     @Test
     void pathMatcherDoesNotMatchInvalidHeader() {
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         matcher.setHeaders(Collections.singletonMap("Authorization", Collections.singletonList("Basic")));
         MockHttpServletRequest testRequest = request(
                 "/somePath",
@@ -200,7 +210,6 @@ class UaaRequestMatcherTests {
 
     @Test
     void pathMatcherMatchesOneOfMultipleHeaders() {
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         Map<String, List<String>> configMap = new HashMap<>();
         configMap.put("Authorization", Arrays.asList(new String[]{"Basic", "Bearer"}));
         matcher.setHeaders(configMap);
@@ -215,7 +224,6 @@ class UaaRequestMatcherTests {
 
     @Test
     void pathMatcherDoesNotMatchOneOfMultipleHeaders() {
-        UaaRequestMatcher matcher = new UaaRequestMatcher("/somePath");
         Map<String, List<String>> configMap = new HashMap<>();
         configMap.put("Authorization", Arrays.asList(new String[]{"Basic", "Bearer"}));
         matcher.setHeaders(configMap);
