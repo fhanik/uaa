@@ -189,7 +189,7 @@ public class SpringServletXmlFiltersConfiguration {
         SessionResetFilter filter = new SessionResetFilter(
                 new DefaultRedirectStrategy(),
                 identityZoneManager,
-                "/login",
+                "/login", //TODO not zone path aware.
                 userDatabase
         );
         FilterRegistrationBean<SessionResetFilter> bean = new FilterRegistrationBean<>(filter);
