@@ -9,10 +9,14 @@ import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
 import org.cloudfoundry.identity.uaa.scim.exception.InvalidPasswordException;
 import org.cloudfoundry.identity.uaa.user.UaaAuthority;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
+import org.cloudfoundry.identity.uaa.zone.MultitenancyFixture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -42,6 +46,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @ExtendWith(PollutionPreventionExtension.class)
 class ChangePasswordControllerTest {
+    /** Whether the test uses the default path or the zone path prefix {@code /z/{subdomain}/}. */
+    enum RequestPathMode {
+        DEFAULT,
+        ZONE_PATH
+    }
+
+    private static final String ZONE_PATH_SUBDOMAIN = "testsubdomain";
+
     private MockMvc mockMvc;
     private ChangePasswordService changePasswordService;
     private UaaAuthentication authentication;
@@ -50,6 +62,7 @@ class ChangePasswordControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
+        IdentityZoneHolder.set(IdentityZone.getUaa());
         changePasswordService = mock(ChangePasswordService.class);
         ChangePasswordController controller = new ChangePasswordController(changePasswordService);
 
@@ -72,18 +85,32 @@ class ChangePasswordControllerTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+        IdentityZoneHolder.set(IdentityZone.getUaa());
     }
 
-    @Test
-    void changePasswordPage_RendersChangePasswordPage() throws Exception {
-        mockMvc.perform(get("/change_password"))
+    private String pathPrefixFor(RequestPathMode mode) {
+        if (mode == RequestPathMode.ZONE_PATH) {
+            IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", ZONE_PATH_SUBDOMAIN);
+            IdentityZoneHolder.set(zone);
+            return "/z/" + ZONE_PATH_SUBDOMAIN;
+        }
+        return "";
+    }
+
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void changePasswordPage_RendersChangePasswordPage(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        mockMvc.perform(get(pathPrefix + "/change_password"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("change_password"));
     }
 
-    @Test
-    void changePassword_Returns302Found_SuccessfullyChangedPassword() throws Exception {
-        MockHttpServletRequestBuilder post = createRequest("secret", "new secret", "new secret");
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void changePassword_Returns302Found_SuccessfullyChangedPassword(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        MockHttpServletRequestBuilder post = createRequest(pathPrefix, "secret", "new secret", "new secret");
         mockMvc.perform(post)
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("profile"));
@@ -94,9 +121,11 @@ class ChangePasswordControllerTest {
         assertThat(afterAuth).isSameAs(authentication);
     }
 
-    @Test
-    void changePassword_ConfirmationPasswordDoesNotMatch() throws Exception {
-        MockHttpServletRequestBuilder post = createRequest("secret", "new secret", "newsecret");
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void changePassword_ConfirmationPasswordDoesNotMatch(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        MockHttpServletRequestBuilder post = createRequest(pathPrefix, "secret", "new secret", "newsecret");
         mockMvc.perform(post)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(view().name("change_password"))
@@ -105,47 +134,53 @@ class ChangePasswordControllerTest {
         verifyNoInteractions(changePasswordService);
     }
 
-    @Test
-    void changePassword_PasswordPolicyViolationReported() throws Exception {
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void changePassword_PasswordPolicyViolationReported(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
         doThrow(new InvalidPasswordException(asList("Msg 2b", "Msg 1b"))).when(changePasswordService).changePassword(
                 "bob",
                 "secret",
                 "new secret");
 
-        MockHttpServletRequestBuilder post = createRequest("secret", "new secret", "new secret");
+        MockHttpServletRequestBuilder post = createRequest(pathPrefix, "secret", "new secret", "new secret");
         mockMvc.perform(post)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(view().name("change_password"))
                 .andExpect(model().attribute("message", "Msg 1b Msg 2b"));
     }
 
-    @Test
-    void changePassword_Returns401Unauthorized_WrongCurrentPassword() throws Exception {
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void changePassword_Returns401Unauthorized_WrongCurrentPassword(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
         doThrow(new BadCredentialsException("401 Unauthorized")).when(changePasswordService).changePassword("bob",
                 "wrong",
                 "new secret");
 
-        MockHttpServletRequestBuilder post = createRequest("wrong", "new secret", "new secret");
+        MockHttpServletRequestBuilder post = createRequest(pathPrefix, "wrong", "new secret", "new secret");
         mockMvc.perform(post)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(view().name("change_password"))
                 .andExpect(model().attribute("message_code", "unauthorized"));
     }
 
-    @Test
-    void changePassword_PasswordNoveltyViolationReported_NewPasswordSameAsCurrentPassword() throws Exception {
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void changePassword_PasswordNoveltyViolationReported_NewPasswordSameAsCurrentPassword(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
         doThrow(new InvalidPasswordException("Your new password cannot be the same as the old password.")).when(
                 changePasswordService).changePassword("bob", "secret", "new secret");
 
-        MockHttpServletRequestBuilder post = createRequest("secret", "new secret", "new secret");
+        MockHttpServletRequestBuilder post = createRequest(pathPrefix, "secret", "new secret", "new secret");
         mockMvc.perform(post)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(view().name("change_password"))
                 .andExpect(model().attribute("message", "Your new password cannot be the same as the old password."));
     }
 
-    private MockHttpServletRequestBuilder createRequest(String currentPassword, String newPassword, String confirmPassword) {
-        return post("/change_password.do")
+    private MockHttpServletRequestBuilder createRequest(String pathPrefix, String currentPassword, String newPassword, String confirmPassword) {
+        return post(pathPrefix + "/change_password.do")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("current_password", currentPassword)
                 .param("new_password", newPassword)
