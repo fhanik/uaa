@@ -18,6 +18,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -32,14 +33,14 @@ public class ForcePasswordChangeController {
     private final ResetPasswordService resetPasswordService;
     private final IdentityZoneManager identityZoneManager;
 
-    @GetMapping({"/force_password_change", "/force_password_change/"})
+    @GetMapping({"/force_password_change", "/force_password_change/", "/z/{subdomain}/force_password_change", "/z/{subdomain}/force_password_change/"})
     public String forcePasswordChangePage(Model model) {
         String email = ((UaaAuthentication) SecurityContextHolder.getContext().getAuthentication()).getPrincipal().getEmail();
         model.addAttribute("email", email);
         return "force_password_change";
     }
 
-    @PostMapping({"/force_password_change", "/force_password_change/"})
+    @PostMapping({"/force_password_change", "/force_password_change/", "/z/{subdomain}/force_password_change", "/z/{subdomain}/force_password_change/"})
     public String handleForcePasswordChange(Model model,
             @RequestParam String password,
             @RequestParam("password_confirmation") String passwordConfirmation,
@@ -65,7 +66,8 @@ public class ForcePasswordChangeController {
         SessionUtils.setPasswordChangeRequired(httpSession, false);
         authentication.setAuthenticatedTime(System.currentTimeMillis());
         SessionUtils.setSecurityContext(request.getSession(), SecurityContextHolder.getContext());
-        return "redirect:/force_password_change_completed";
+        String pathPrefix = UaaUrlUtils.getZonePathPrefix(request);
+        return pathPrefix.isEmpty() ? "redirect:/force_password_change_completed" : "redirect:" + pathPrefix + "/force_password_change_completed";
     }
 
     private String handleUnprocessableEntity(Model model, HttpServletResponse response, String email, String message) {

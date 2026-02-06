@@ -18,6 +18,7 @@ import org.cloudfoundry.identity.uaa.authentication.AccountNotVerifiedException;
 import org.cloudfoundry.identity.uaa.authentication.AuthenticationPolicyRejectionException;
 import org.cloudfoundry.identity.uaa.authentication.PasswordChangeRequiredException;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
@@ -69,7 +70,7 @@ public class UaaAuthenticationFailureHandler implements AuthenticationFailureHan
 
         @Override
         public void sendRedirect(HttpServletRequest request, HttpServletResponse response, String url) throws IOException {
-            String zonePrefix = getZonePathPrefix(request);
+            String zonePrefix = UaaUrlUtils.getZonePathPrefix(request);
             String targetUrl = url;
             if (!zonePrefix.isEmpty() && url.startsWith("/") && !url.startsWith(zonePrefix)) {
                 targetUrl = zonePrefix + url;
@@ -106,31 +107,10 @@ public class UaaAuthenticationFailureHandler implements AuthenticationFailureHan
 
     private void addCookie(HttpServletRequest request, HttpServletResponse response) {
         Cookie clearCurrentUserCookie = currentUserCookieFactory.getNullCookie();
-        String zonePrefix = getZonePathPrefix(request);
+        String zonePrefix = UaaUrlUtils.getZonePathPrefix(request);
         if (!zonePrefix.isEmpty()) {
             clearCurrentUserCookie.setPath(zonePrefix);
         }
         response.addCookie(clearCurrentUserCookie);
-    }
-
-    /**
-     * Returns the zone path prefix (e.g. /z/test-zone) if the request is under /z/{subdomain}/..., otherwise "".
-     * Uses context path and request URI to determine the path after the context.
-     */
-    static String getZonePathPrefix(HttpServletRequest request) {
-        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
-        String requestURI = request.getRequestURI() != null ? request.getRequestURI() : "";
-        String path = requestURI.startsWith(contextPath) ? requestURI.substring(contextPath.length()) : requestURI;
-        if (path.isEmpty()) {
-            path = "/";
-        }
-        if (path.startsWith("/z/")) {
-            int secondSlash = path.indexOf('/', 3);
-            if (secondSlash > 0) {
-                return path.substring(0, secondSlash);
-            }
-            return path;
-        }
-        return "";
     }
 }

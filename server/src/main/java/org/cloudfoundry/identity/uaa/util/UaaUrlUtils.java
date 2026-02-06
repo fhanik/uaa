@@ -293,6 +293,27 @@ public abstract class UaaUrlUtils {
         return "%s%s".formatted(servletPath, pathInfo);
     }
 
+    /**
+     * Returns the zone path prefix (e.g. /z/test-zone) if the request is under /z/{subdomain}/..., otherwise "".
+     * Uses context path and request URI to determine the path after the context.
+     */
+    public static String getZonePathPrefix(HttpServletRequest request) {
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String requestURI = request.getRequestURI() != null ? request.getRequestURI() : "";
+        String path = requestURI.startsWith(contextPath) ? requestURI.substring(contextPath.length()) : requestURI;
+        if (path.isEmpty()) {
+            path = "/";
+        }
+        if (path.startsWith("/z/")) {
+            int secondSlash = path.indexOf('/', 3);
+            if (secondSlash > 0) {
+                return path.substring(0, secondSlash);
+            }
+            return path;
+        }
+        return "";
+    }
+
     public static boolean uriHasMatchingHost(String uri, String hostname) {
         if (uri == null) {
             return false;
