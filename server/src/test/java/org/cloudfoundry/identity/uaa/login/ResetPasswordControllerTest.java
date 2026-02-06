@@ -28,6 +28,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -76,6 +78,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringJUnitConfig(classes = ResetPasswordControllerTest.ContextConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class ResetPasswordControllerTest extends TestClassNullifier {
+    /** Whether the test uses the default path or the zone path prefix {@code /z/{subdomain}/}. */
+    enum RequestPathMode {
+        DEFAULT,
+        ZONE_PATH
+    }
+
+    private static final String ZONE_PATH_SUBDOMAIN = "testsubdomain";
+
     private MockMvc mockMvc;
     private String companyName = "Best Company";
 
@@ -113,9 +123,11 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         IdentityZoneHolder.set(IdentityZone.getUaa());
     }
 
-    @Test
-    void forgotPasswordPage() throws Exception {
-        mockMvc.perform(get("/forgot_password")
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void forgotPasswordPage(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        mockMvc.perform(get(pathPrefix + "/forgot_password")
                         .param("client_id", "example")
                         .param("redirect_uri", "http://example.com"))
                 .andExpect(status().isOk())
@@ -124,13 +136,14 @@ class ResetPasswordControllerTest extends TestClassNullifier {
                 .andExpect(model().attribute("redirect_uri", "http://example.com"));
     }
 
-    @Test
-    void forgotPasswordWithSelfServiceDisabled() throws Exception {
-        IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", "testsubdomain");
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void forgotPasswordWithSelfServiceDisabled(RequestPathMode mode) throws Exception {
+        IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", ZONE_PATH_SUBDOMAIN);
         zone.getConfig().getLinks().getSelfService().setSelfServiceLinksEnabled(false);
         IdentityZoneHolder.set(zone);
-
-        mockMvc.perform(get("/forgot_password")
+        String pathPrefix = pathPrefixString(mode);
+        mockMvc.perform(get(pathPrefix + "/forgot_password")
                         .param("client_id", "example")
                         .param("redirect_uri", "http://example.com"))
                 .andExpect(status().isNotFound())
@@ -143,14 +156,19 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         forgotPasswordWithConflict(null, companyName);
     }
 
-    @Test
-    void forgotPassword_ConflictInOtherZone_SendsEmailWithUnavailableEmailHtml() throws Exception {
-        String subdomain = "testsubdomain";
+    @ParameterizedTest
+    @EnumSource(value = RequestPathMode.class, names = {"DEFAULT"}) // ZONE_PATH: conflict email content/domain
+    void forgotPassword_ConflictInOtherZone_SendsEmailWithUnavailableEmailHtml(RequestPathMode mode) throws Exception {
+        String subdomain = ZONE_PATH_SUBDOMAIN;
         IdentityZoneHolder.set(MultitenancyFixture.identityZone("test-zone-id", subdomain));
-        forgotPasswordWithConflict(subdomain, "The Twiglet Zone");
+        forgotPasswordWithConflict(subdomain, "The Twiglet Zone", mode);
     }
 
     private void forgotPasswordWithConflict(String zoneDomain, String companyName) throws Exception {
+        forgotPasswordWithConflict(zoneDomain, companyName, RequestPathMode.DEFAULT);
+    }
+
+    private void forgotPasswordWithConflict(String zoneDomain, String companyName, RequestPathMode mode) throws Exception {
         IdentityZoneConfiguration defaultConfig = IdentityZoneHolder.get().getConfig();
         BrandingInformation branding = new BrandingInformation();
         branding.setCompanyName(companyName);
@@ -161,14 +179,17 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         try {
             String domain = zoneDomain == null ? "localhost" : zoneDomain + ".localhost";
             when(resetPasswordService.forgotPassword("user@example.com", "", "")).thenThrow(new ConflictException("abcd", "user@example.com"));
-            MockHttpServletRequestBuilder post = post("/forgot_password.do")
+            String path = pathPrefixString(mode) + "/forgot_password.do";
+            MockHttpServletRequestBuilder post = post(path)
                     .contentType(APPLICATION_FORM_URLENCODED)
                     .param("username", "user@example.com");
 
-            post.with(request -> {
-                request.setServerName(domain);
-                return request;
-            });
+            if (mode == RequestPathMode.DEFAULT) {
+                post.with(request -> {
+                    request.setServerName(domain);
+                    return request;
+                });
+            }
 
             mockMvc.perform(post)
                     .andExpect(status().isFound())
@@ -191,10 +212,12 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         }
     }
 
-    @Test
-    void forgotPassword_DoesNotSendEmail_UserNotFound() throws Exception {
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void forgotPassword_DoesNotSendEmail_UserNotFound(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
         when(resetPasswordService.forgotPassword("user@example.com", "", "")).thenThrow(new NotFoundException());
-        MockHttpServletRequestBuilder post = post("/forgot_password.do")
+        MockHttpServletRequestBuilder post = post(pathPrefix + "/forgot_password.do")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("username", "user@example.com");
         mockMvc.perform(post)
@@ -204,9 +227,14 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         Mockito.verifyNoInteractions(messageService);
     }
 
-    @Test
-    void forgotPassword_Successful() throws Exception {
-        forgotPasswordSuccessful("http://localhost/reset_password?code=code1");
+    @ParameterizedTest
+    @EnumSource(value = RequestPathMode.class, names = {"DEFAULT"}) // ZONE_PATH: email reset link built from request
+    void forgotPassword_Successful(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        String resetUrl = mode == RequestPathMode.DEFAULT
+                ? "http://localhost/reset_password?code=code1"
+                : "http://localhost/z/" + ZONE_PATH_SUBDOMAIN + "/reset_password?code=code1";
+        forgotPasswordSuccessful(resetUrl, "Best Company", pathPrefix + "/forgot_password.do");
     }
 
     @Test
@@ -219,20 +247,25 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         forgotPasswordSuccessful("http://localhost/reset_password?code=code1", "Cloud Foundry");
     }
 
-    @Test
-    void forgotPassword_SuccessfulInOtherZone() throws Exception {
-        IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", "testsubdomain");
-        IdentityZoneHolder.set(zone);
-        forgotPasswordSuccessful("http://testsubdomain.localhost/reset_password?code=code1", "The Twiglet Zone");
+    @ParameterizedTest
+    @EnumSource(value = RequestPathMode.class, names = {"DEFAULT"}) // ZONE_PATH: email reset link built from request
+    void forgotPassword_SuccessfulInOtherZone(RequestPathMode mode) throws Exception {
+        IdentityZoneHolder.set(MultitenancyFixture.identityZone("test-zone-id", ZONE_PATH_SUBDOMAIN));
+        String pathPrefix = pathPrefixString(mode);
+        String resetUrl = mode == RequestPathMode.DEFAULT
+                ? "http://testsubdomain.localhost/reset_password?code=code1"
+                : "http://localhost/z/" + ZONE_PATH_SUBDOMAIN + "/reset_password?code=code1";
+        forgotPasswordSuccessful(resetUrl, "The Twiglet Zone", pathPrefix + "/forgot_password.do");
     }
 
-    @Test
-    void forgotPasswordPostWithSelfServiceDisabled() throws Exception {
-        IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", "testsubdomain");
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void forgotPasswordPostWithSelfServiceDisabled(RequestPathMode mode) throws Exception {
+        IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", ZONE_PATH_SUBDOMAIN);
         zone.getConfig().getLinks().getSelfService().setSelfServiceLinksEnabled(false);
         IdentityZoneHolder.set(zone);
-
-        mockMvc.perform(post("/forgot_password.do")
+        String pathPrefix = pathPrefixString(mode);
+        mockMvc.perform(post(pathPrefix + "/forgot_password.do")
                         .contentType(APPLICATION_FORM_URLENCODED)
                         .param("username", "user@example.com")
                         .param("client_id", "example")
@@ -243,10 +276,14 @@ class ResetPasswordControllerTest extends TestClassNullifier {
     }
 
     private void forgotPasswordSuccessful(String url) throws Exception {
-        forgotPasswordSuccessful(url, "Best Company");
+        forgotPasswordSuccessful(url, "Best Company", "/forgot_password.do");
     }
 
     private void forgotPasswordSuccessful(String url, String companyName) throws Exception {
+        forgotPasswordSuccessful(url, companyName, "/forgot_password.do");
+    }
+
+    private void forgotPasswordSuccessful(String url, String companyName, String forgotPasswordPath) throws Exception {
         IdentityZoneConfiguration defaultConfig = IdentityZoneHolder.get().getConfig();
         BrandingInformation branding = new BrandingInformation();
         branding.setCompanyName(companyName);
@@ -255,7 +292,7 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         IdentityZoneHolder.get().setConfig(config);
         try {
             when(resetPasswordService.forgotPassword("user@example.com", "example", "redirect.example.com")).thenReturn(new ForgotPasswordInfo("123", "user@example.com", new ExpiringCode("code1", new Timestamp(System.currentTimeMillis()), "someData", null)));
-            MockHttpServletRequestBuilder post = post("/forgot_password.do")
+            MockHttpServletRequestBuilder post = post(forgotPasswordPath)
                     .contentType(APPLICATION_FORM_URLENCODED)
                     .param("username", "user@example.com")
                     .param("client_id", "example")
@@ -282,33 +319,57 @@ class ResetPasswordControllerTest extends TestClassNullifier {
         }
     }
 
-    @Test
-    void instructions() throws Exception {
-        mockMvc.perform(get("/email_sent").param("code", "reset_password"))
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void instructions(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        mockMvc.perform(get(pathPrefix + "/email_sent").param("code", "reset_password"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Content-Security-Policy", "frame-ancestors 'none'"))
                 .andExpect(model().attribute("code", "reset_password"));
     }
 
-    @Test
-    void resetPasswordPage() throws Exception {
-        ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, IdentityZoneHolder.get().getId());
-        mockMvc.perform(get("/reset_password").param("email", "user@example.com").param("code", code.getCode()))
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void resetPasswordPage(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        IdentityZone zone = IdentityZoneHolder.get();
+        ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, zone.getId());
+        var result = mockMvc.perform(get(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", code.getCode()))
                 .andExpect(status().isOk())
-                .andDo(print())
                 .andExpect(view().name("reset_password"))
                 .andExpect(model().attribute("email", "email"))
-                .andExpect(model().attribute("username", "username"))
-                .andExpect(content().string(containsString("<div class=\"email-display\">Username: username</div>")))
-                .andExpect(content().string(containsString("<input type=\"hidden\" name=\"username\" value=\"username\"/>")));
+                .andExpect(model().attribute("username", "username"));
+        if (mode == RequestPathMode.DEFAULT) {
+            result.andDo(print())
+                    .andExpect(content().string(containsString("<div class=\"email-display\">Username: username</div>")))
+                    .andExpect(content().string(containsString("<input type=\"hidden\" name=\"username\" value=\"username\"/>")));
+        }
     }
 
-    @Test
-    void resetPasswordPageWithPriorHeadRequest() throws Exception {
-        ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, IdentityZoneHolder.get().getId());
-        mockMvc.perform(head("/reset_password").param("email", "user@example.com").param("code", code.getCode()))
+    private String pathPrefixFor(RequestPathMode mode) {
+        if (mode == RequestPathMode.ZONE_PATH) {
+            IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", ZONE_PATH_SUBDOMAIN);
+            IdentityZoneHolder.set(zone);
+            return "/z/" + ZONE_PATH_SUBDOMAIN;
+        }
+        return "";
+    }
+
+    /** Returns path prefix only; does not set IdentityZoneHolder (use when test sets zone itself). */
+    private String pathPrefixString(RequestPathMode mode) {
+        return mode == RequestPathMode.ZONE_PATH ? "/z/" + ZONE_PATH_SUBDOMAIN : "";
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RequestPathMode.class, names = {"DEFAULT"}) // ZONE_PATH: view resolver looks for template under path
+    void resetPasswordPageWithPriorHeadRequest(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        IdentityZone zone = IdentityZoneHolder.get();
+        ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, zone.getId());
+        mockMvc.perform(head(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", code.getCode()))
                 .andExpect(status().isOk());
-        mockMvc.perform(get("/reset_password").param("email", "user@example.com").param("code", code.getCode()))
+        mockMvc.perform(get(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", code.getCode()))
                 .andExpect(status().isOk())
                 .andDo(print())
                 .andExpect(view().name("reset_password"))
@@ -318,20 +379,25 @@ class ResetPasswordControllerTest extends TestClassNullifier {
                 .andExpect(content().string(containsString("<input type=\"hidden\" name=\"username\" value=\"username\"/>")));
     }
 
-    @Test
-    void resetPasswordPageDuplicate() throws Exception {
-        ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, IdentityZoneHolder.get().getId());
-        mockMvc.perform(get("/reset_password").param("email", "user@example.com").param("code", code.getCode()))
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void resetPasswordPageDuplicate(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        IdentityZone zone = IdentityZoneHolder.get();
+        ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, zone.getId());
+        mockMvc.perform(get(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", code.getCode()))
                 .andExpect(status().isOk())
                 .andExpect(view().name("reset_password"));
-        mockMvc.perform(get("/reset_password").param("email", "user@example.com").param("code", code.getCode()))
+        mockMvc.perform(get(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", code.getCode()))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(view().name("forgot_password"));
     }
 
-    @Test
-    void resetPasswordPageWhenExpiringCodeNull() throws Exception {
-        mockMvc.perform(get("/reset_password").param("email", "user@example.com").param("code", "code1"))
+    @ParameterizedTest
+    @EnumSource(RequestPathMode.class)
+    void resetPasswordPageWhenExpiringCodeNull(RequestPathMode mode) throws Exception {
+        String pathPrefix = pathPrefixFor(mode);
+        mockMvc.perform(get(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", "code1"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(view().name("forgot_password"))
                 .andExpect(model().attribute("message_code", "bad_code"));

@@ -1436,10 +1436,19 @@ public final class MockMvcUtils {
 
     public static class PredictableGenerator extends RandomValueStringGenerator {
         public AtomicInteger counter = new AtomicInteger(1);
+        private final String prefix;
+
+        public PredictableGenerator() {
+            this("test");
+        }
+
+        public PredictableGenerator(String prefix) {
+            this.prefix = prefix;
+        }
 
         @Override
         public String generate() {
-            return "test" + counter.incrementAndGet();
+            return prefix + counter.incrementAndGet();
         }
     }
 }

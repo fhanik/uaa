@@ -181,6 +181,24 @@ class ResetPasswordAuthenticationFilterTest {
     }
 
     @Test
+    void zone_path_reset_password_do_processed_by_filter() throws ServletException, IOException {
+        when(service.resetPassword(any(ExpiringCode.class), eq(password))).thenReturn(new ResetPasswordService.ResetPasswordResponse(user, null, null));
+        String code = request.getParameter("code");
+        var zonePathRequest = MockMvcRequestBuilders.post("/z/testzone/reset_password.do")
+                .param("code", code)
+                .param("password", password)
+                .param("password_confirmation", password)
+                .param("email", email)
+                .buildRequest(new MockServletContext());
+
+        filter.doFilterInternal(zonePathRequest, response, chain);
+
+        verify(service, times(1)).resetPassword(any(ExpiringCode.class), eq(password));
+        verify(response, times(1)).sendRedirect(zonePathRequest.getContextPath() + "/login?success=password_reset");
+        verify(chain, times(0)).doFilter(any(), any());
+    }
+
+    @Test
     void autowired_constructor() {
         var filter = new ResetPasswordAuthenticationFilter(service, new InMemoryExpiringCodeStore(new TimeServiceImpl()));
         var defaultEntryPoint = ReflectionTestUtils.getField(filter, "entryPoint");
