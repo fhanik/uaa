@@ -12,7 +12,7 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 ## Table of Contents
 
 1.  ✅ [Reset / forgot password (UI)](#1-reset--forgot-password-ui)
-2.  ❌ [Change password (UI)](#2-change-password-ui)
+2.  ✅ [Change password (UI)](#2-change-password-ui)
 3.  ❌ [Change email / verify email (UI)](#3-change-email--verify-email-ui)
 4.  ❌ [Force password change (UI)](#4-force-password-change-ui)
 5.  ❌ [Logged out (UI)](#5-logged-out-ui)
@@ -23,10 +23,11 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 10. ❌ [Passcode (API / UI)](#10-passcode-api--ui)
 11. ❌ [OAuth / token / client admin (API)](#11-oauth--token--client-admin-api-not-yet-covered-by-z)
 12. ❌ [Authenticate (API)](#12-authenticate-api)
-13. ❌ [Zone Switching - Path Aware Zone Sessions](#13-zone-switching---path-aware-zone-sessions)
-14. ❌ [Summary (high-level)](#summary-high-level)
-15. ✅ [Pull Request](https://github.com/cloudfoundry/uaa/pull/3730)
-15. ✅ [Feature Branch](https://github.com/fhanik/uaa/tree/feature/path-based-zones)
+13. ❌ [Disable User Management and Rate Limiter](#12-authenticate-api)
+14. ❌ [Zone Switching - Path Aware Zone Sessions](#13-zone-switching---path-aware-zone-sessions)
+15. ❌ [Summary (high-level)](#summary-high-level)
+16. ✅ [Pull Request](https://github.com/cloudfoundry/uaa/pull/3730)
+17. ✅ [Feature Branch](https://github.com/fhanik/uaa/tree/feature/path-based-zones)
 ---
 
 ## 1. Reset / forgot password (UI)
@@ -165,7 +166,13 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 
 ---
 
-## 13. Zone Switching - Path Aware Zone Sessions
+## 13. Disable User Management and Rate Limiter
+
+Should filter all the same URLs when the zone is path based.
+
+---
+
+## 14. Zone Switching - Path Aware Zone Sessions
 
 Once steps 1-12 are completed, the system will work for a single session.
 Switching zones by changing the /z/ zone path, will cause the SessionResetFilter

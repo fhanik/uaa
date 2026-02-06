@@ -25,12 +25,12 @@ public class ChangePasswordController {
         this.changePasswordService = changePasswordService;
     }
 
-    @GetMapping("/change_password")
+    @GetMapping({"/change_password", "/z/{subdomain}/change_password"})
     public String changePasswordPage() {
         return "change_password";
     }
 
-    @PostMapping("/change_password.do")
+    @PostMapping({"/change_password.do", "/z/{subdomain}/change_password.do"})
     public String changePassword(
             Model model,
             @RequestParam("current_password") String currentPassword,

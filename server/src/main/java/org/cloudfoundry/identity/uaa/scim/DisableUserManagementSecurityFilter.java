@@ -43,6 +43,8 @@ public class DisableUserManagementSecurityFilter extends OncePerRequestFilter {
         regex1 += "|^/verify_email";
         regex1 += "|^/change_password";
         regex1 += "|^/change_password.do";
+        regex1 += "|^/z/[^/]+/change_password";
+        regex1 += "|^/z/[^/]+/change_password.do";
         regex1 += "|^/forgot_password";
         regex1 += "|^/forgot_password.do";
         regex1 += "|^/email_sent";
