@@ -15,7 +15,7 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 2.  ✅ [Change password (UI)](#2-change-password-ui)
 3.  ✅ [Change email / verify email (UI)](#3-change-email--verify-email-ui)
 4.  ✅ [Force password change (UI)](#4-force-password-change-ui)
-5.  ❌ [Logged out (UI)](#5-logged-out-ui)
+5.  ✅ [Logged out (UI)](#5-logged-out-ui)
 6.  ❌ [Home and error pages (UI)](#6-home-and-error-pages-ui)
 7.  ❌ [Session (UI)](#7-session-ui)
 8.  ❌ [Invitations (UI + API)](#8-invitations-ui--api)
@@ -25,9 +25,10 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 12. ❌ [Authenticate (API)](#12-authenticate-api)
 13. ❌ [Disable User Management and Rate Limiter](#12-authenticate-api)
 14. ❌ [Zone Switching - Path Aware Zone Sessions](#13-zone-switching---path-aware-zone-sessions)
-15. ❌ [Summary (high-level)](#summary-high-level)
-16. ✅ [Pull Request](https://github.com/cloudfoundry/uaa/pull/3730)
-17. ✅ [Feature Branch](https://github.com/fhanik/uaa/tree/feature/path-based-zones)
+15. ❌ [HTML Content - Pages and Emails](#summary-high-level)
+16. ❌ [Summary (high-level)](#summary-high-level)
+17. ✅ [Pull Request](https://github.com/cloudfoundry/uaa/pull/3730)
+18. ✅ [Feature Branch](https://github.com/fhanik/uaa/tree/feature/path-based-zones)
 ---
 
 ## 1. Reset / forgot password (UI)
@@ -181,6 +182,13 @@ to kick in and redirect the user to the default zone login page.
 There is a decision to be made at this point, do we support multiple zone sessions when using paths?
 If so, there will be a session implementation, very much like the one IdentityZoneResolving/Switching filters
 that allows the same server side session hold attributes for multiple zones at the same time
+
+---
+
+## 15. HTML Content - Pages and Emails
+
+See [logged_out.html](server/src/main/resources/templates/web/logged_out.html) for how to handle HTML
+Self Explanatory 
 
 ## Summary (high-level)
 
