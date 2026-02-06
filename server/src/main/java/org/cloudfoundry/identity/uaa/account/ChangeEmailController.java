@@ -40,7 +40,7 @@ public class ChangeEmailController {
         this.uaaUserDatabase = uaaUserDatabase;
     }
 
-    @GetMapping("/change_email")
+    @GetMapping({"/change_email", "/z/{subdomain}/change_email"})
     public String changeEmailPage(Model model, @RequestParam(value = "client_id", required = false) String clientId,
             @RequestParam(value = "redirect_uri", required = false) String redirectUri) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
@@ -50,7 +50,7 @@ public class ChangeEmailController {
         return "change_email";
     }
 
-    @PostMapping("/change_email.do")
+    @PostMapping({"/change_email.do", "/z/{subdomain}/change_email.do"})
     public String changeEmail(Model model, @Valid @ModelAttribute ValidEmail newEmail, BindingResult result,
             @RequestParam(required = false, value = "client_id") String clientId,
             @RequestParam(required = false, value = "redirect_uri") String redirectUri,
@@ -86,7 +86,7 @@ public class ChangeEmailController {
         return "redirect:email_sent?code=email_change";
     }
 
-    @GetMapping("/verify_email")
+    @GetMapping({"/verify_email", "/z/{subdomain}/verify_email"})
     public String verifyEmail(Model model, @RequestParam String code, RedirectAttributes redirectAttributes,
             HttpServletResponse httpServletResponse, HttpServletRequest request) {
         Map<String, String> response;
