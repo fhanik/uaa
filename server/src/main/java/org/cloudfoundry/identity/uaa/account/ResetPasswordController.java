@@ -71,7 +71,7 @@ public class ResetPasswordController {
         this.externalLoginUrl = externalLoginUrl;
     }
 
-    @GetMapping("/forgot_password")
+    @GetMapping({"/forgot_password", "/z/{subdomain}/forgot_password"})
     public String forgotPasswordPage(Model model,
             @RequestParam(required = false, value = "client_id") String clientId,
             @RequestParam(required = false, value = "redirect_uri") String redirectUri,
@@ -84,7 +84,7 @@ public class ResetPasswordController {
         return "forgot_password";
     }
 
-    @PostMapping("/forgot_password.do")
+    @PostMapping({"/forgot_password.do", "/z/{subdomain}/forgot_password.do"})
     public String forgotPassword(Model model, @RequestParam("username") String username, @RequestParam(value = "client_id", defaultValue = "") String clientId,
             @RequestParam(value = "redirect_uri", defaultValue = "") String redirectUri, HttpServletResponse response) {
         if (!identityZoneManager.getCurrentIdentityZone().getConfig().getLinks().getSelfService().isSelfServiceLinksEnabled()) {
@@ -160,19 +160,19 @@ public class ResetPasswordController {
         }
     }
 
-    @GetMapping("/email_sent")
+    @GetMapping({"/email_sent", "/z/{subdomain}/email_sent"})
     public String emailSentPage(@ModelAttribute("code") String code,
             HttpServletResponse response) {
         response.addHeader("Content-Security-Policy", "frame-ancestors 'none'");
         return "email_sent";
     }
 
-    @RequestMapping(value = "/reset_password", method = RequestMethod.HEAD)
+    @RequestMapping(value = {"/reset_password", "/z/{subdomain}/reset_password"}, method = RequestMethod.HEAD)
     public void resetPassword() {
         // Some mail providers initially send a HEAD request to check the validity of the link before redirecting users.
     }
 
-    @GetMapping(value = "/reset_password", params = {"code"})
+    @GetMapping(value = {"/reset_password", "/z/{subdomain}/reset_password"}, params = {"code"})
     public String resetPasswordPage(Model model,
             HttpServletResponse response,
             @RequestParam("code") String code) {
@@ -217,7 +217,7 @@ public class ResetPasswordController {
         return code;
     }
 
-    @PostMapping("/reset_password.do")
+    @PostMapping({"/reset_password.do", "/z/{subdomain}/reset_password.do"})
     public void resetPassword(Model model,
             @RequestParam("code") String code,
             @RequestParam("email") String email,

@@ -11,7 +11,7 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 
 ## Table of Contents
 
-1.  ❌ [Reset / forgot password (UI)](#1-reset--forgot-password-ui)
+1.  ✅ [Reset / forgot password (UI)](#1-reset--forgot-password-ui)
 2.  ❌ [Change password (UI)](#2-change-password-ui)
 3.  ❌ [Change email / verify email (UI)](#3-change-email--verify-email-ui)
 4.  ❌ [Force password change (UI)](#4-force-password-change-ui)

@@ -29,8 +29,24 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.springframework.util.StringUtils.hasText;
 
 public class ResetPasswordAuthenticationEntryPoint implements AuthenticationEntryPoint {
+
+    /**
+     * When the request was to a zone path (e.g. /z/{subdomain}/reset_password.do), forward to the same zone path
+     * so the user stays in zone context. Otherwise return "" for default path.
+     */
+    private String getForwardPathPrefix(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (hasText(path) && path.startsWith("/z/")) {
+            int secondSlash = path.indexOf('/', 3);
+            if (secondSlash > 0) {
+                return path.substring(0, secondSlash + 1);
+            }
+        }
+        return "/";
+    }
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException authException) throws IOException, ServletException {
         Throwable cause = authException.getCause();
@@ -67,18 +83,20 @@ public class ResetPasswordAuthenticationEntryPoint implements AuthenticationEntr
             }
         };
 
+        String forwardPathPrefix = getForwardPathPrefix(request);
+
         if (cause instanceof PasswordConfirmationException passwordConfirmationException) {
             request.setAttribute("message_code", passwordConfirmationException.getMessageCode());
 
-            request.getRequestDispatcher("/reset_password").forward(wrapper, response);
+            request.getRequestDispatcher(forwardPathPrefix + "reset_password").forward(wrapper, response);
             return;
         } else {
             if (cause instanceof InvalidPasswordException exception) {
                 request.setAttribute("message", exception.getMessagesAsOneString());
-                request.getRequestDispatcher("/reset_password").forward(wrapper, response);
+                request.getRequestDispatcher(forwardPathPrefix + "reset_password").forward(wrapper, response);
             } else {
                 request.setAttribute("message_code", "bad_code");
-                request.getRequestDispatcher("/forgot_password").forward(wrapper, response);
+                request.getRequestDispatcher(forwardPathPrefix + "forgot_password").forward(wrapper, response);
             }
         }
     }

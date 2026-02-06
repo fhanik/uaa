@@ -70,6 +70,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static org.cloudfoundry.identity.uaa.account.ResetPasswordAuthenticationFilter.RESET_PASSWORD_URL;
 import static org.cloudfoundry.identity.uaa.web.AuthorizationManagersUtils.anyOf;
 
 @Configuration
@@ -474,7 +475,7 @@ class LoginSecurityConfiguration {
                         "/verify_email", "/z/*/verify_email",
                         "/forgot_password", "/z/*/forgot_password",
                         "/forgot_password.do", "/z/*/forgot_password.do",
-                        ResetPasswordAuthenticationFilter.RESET_PASSWORD_URL
+                        RESET_PASSWORD_URL, "/z/*" + RESET_PASSWORD_URL
                 )
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .csrf(csrf -> {
