@@ -16,7 +16,7 @@
         </div>
         <th:block th:unless="${error_message_code == 'code_expired'}" >
           <th:block th:if="${provider == 'uaa'}">
-            <form th:action="@{/invitations/accept.do}" method="post" novalidate="novalidate">
+            <form th:action="${pathPrefix != null && !#strings.isEmpty(pathPrefix) ? pathPrefix + '/invitations/accept.do' : '/invitations/accept.do'}" method="post" novalidate="novalidate">
                 <input name="code" type="hidden" value="code" th:value="${code}"/>
                 <input name="password" type="password" placeholder="Password" aria-label="Password" autocomplete="off" class="form-control"/>
                 <input name="password_confirmation" type="password" placeholder="Confirm" aria-label="Confirm Password" autocomplete="off" class="form-control"/>
@@ -33,7 +33,7 @@
           </th:block>
             <th:block th:if="${isLdap}">
                 <p>Sign in with enterprise credentials: </p>
-                <form th:action="@{/invitations/accept_enterprise.do}" method="post" novalidate="novalidate">
+                <form th:action="${pathPrefix != null && !#strings.isEmpty(pathPrefix) ? pathPrefix + '/invitations/accept_enterprise.do' : '/invitations/accept_enterprise.do'}" method="post" novalidate="novalidate">
                     <input name="enterprise_email" type="hidden" th:value="${email}"/>
                     <input name="code" type="hidden" value="code" th:value="${code}"/>
                     <input name="enterprise_username" type="text" placeholder="Username" aria-label="Username" autocomplete="off" class="form-control"/>

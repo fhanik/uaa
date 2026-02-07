@@ -29,6 +29,7 @@ import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.ObjectUtils;
 import org.cloudfoundry.identity.uaa.util.UaaHttpRequestUtils;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -74,7 +75,7 @@ import static org.springframework.util.StringUtils.hasText;
 
 @Slf4j
 @Controller
-@RequestMapping("/invitations")
+@RequestMapping(value = {"/invitations", "/z/{subdomain}/invitations"})
 public class InvitationsController {
 
     private static final String EMAIL = "email";
@@ -119,6 +120,7 @@ public class InvitationsController {
 
         ExpiringCode expiringCode = expiringCodeStore.peekCode(code, identityZoneManager.getCurrentIdentityZoneId());
         if ((null == expiringCode) || (null != expiringCode.getIntent() && !INVITATION.name().equals(expiringCode.getIntent()))) {
+            model.addAttribute("pathPrefix", UaaUrlUtils.getZonePathPrefix(request));
             return handleUnprocessableEntity(model, response, "error_message_code", "code_expired", "invitations/accept_invite");
         }
 
@@ -161,6 +163,7 @@ public class InvitationsController {
                 AnonymousAuthenticationToken token = new AnonymousAuthenticationToken("scim.invite", uaaPrincipal,
                         Collections.singletonList(UaaAuthority.UAA_INVITED));
                 SecurityContextHolder.getContext().setAuthentication(token);
+                model.addAttribute("pathPrefix", UaaUrlUtils.getZonePathPrefix(request));
                 model.addAttribute("provider", provider.getType());
                 model.addAttribute("code", code);
                 model.addAttribute(EMAIL, codeData.get(EMAIL));
@@ -170,6 +173,7 @@ public class InvitationsController {
             return "invitations/accept_invite";
         } catch (EmptyResultDataAccessException noProviderFound) {
             log.debug("No available invitation providers for email:%s, id:%s".formatted(codeData.get(EMAIL), codeData.get("user_id")));
+            model.addAttribute("pathPrefix", UaaUrlUtils.getZonePathPrefix(request));
             return handleUnprocessableEntity(model, response, "error_message_code", "no_suitable_idp", "invitations/accept_invite");
         }
     }
@@ -244,7 +248,10 @@ public class InvitationsController {
             @RequestParam("code") String code,
             @RequestParam(value = "does_user_consent", required = false) boolean doesUserConsent,
             Model model,
+            HttpServletRequest request,
             HttpServletResponse response) {
+
+        String pathPrefix = UaaUrlUtils.getZonePathPrefix(request);
 
         PasswordConfirmationValidation validation = new PasswordConfirmationValidation(password, passwordConfirmation);
 
@@ -255,6 +262,7 @@ public class InvitationsController {
         if (expiringCode == null || expiringCode.getData() == null) {
             log.debug("Failing invitation. Code not found.");
             SecurityContextHolder.clearContext();
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message_code", "code_expired", "invitations/accept_invite");
         }
         Map<String, String> data = JsonUtils.readValue(expiringCode.getData(), new TypeReference<>() {
@@ -262,36 +270,38 @@ public class InvitationsController {
         if (principal == null || data.get("user_id") == null || !data.get("user_id").equals(principal.getId())) {
             log.debug("Failing invitation. Code and user ID mismatch.");
             SecurityContextHolder.clearContext();
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message_code", "code_expired", "invitations/accept_invite");
         }
 
         final String newCode = expiringCodeStore.generateCode(expiringCode.getData(), new Timestamp(System.currentTimeMillis() + (10 * 60 * 1000)), expiringCode.getIntent(), identityZoneManager.getCurrentIdentityZoneId()).getCode();
         BrandingInformation zoneBranding = identityZoneManager.getCurrentIdentityZone().getConfig().getBranding();
         if (zoneBranding != null && zoneBranding.getConsent() != null && !doesUserConsent) {
-            return processErrorReload(newCode, model, response, "error_message_code", "missing_consent");
+            return processErrorReload(newCode, model, response, "error_message_code", "missing_consent", pathPrefix);
         }
         if (!validation.valid()) {
-            return processErrorReload(newCode, model, response, "error_message_code", validation.getMessageCode());
+            return processErrorReload(newCode, model, response, "error_message_code", validation.getMessageCode(), pathPrefix);
         }
         try {
             passwordValidator.validate(password);
         } catch (InvalidPasswordException e) {
-            return processErrorReload(newCode, model, response, "error_message", e.getMessagesAsOneString());
+            return processErrorReload(newCode, model, response, "error_message", e.getMessagesAsOneString(), pathPrefix);
         }
         AcceptedInvitation invitation;
         try {
             invitation = invitationsService.acceptInvitation(newCode, password);
         } catch (HttpClientErrorException e) {
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message_code", "code_expired", "invitations/accept_invite");
         }
-        String res = "redirect:/login?success=invite_accepted";
+        String res = pathPrefix + "/login?success=invite_accepted";
         if (!invitation.getRedirectUri().equals("/home")) {
             res += "&" + FORM_REDIRECT_PARAMETER + "=" + invitation.getRedirectUri();
         }
-        return res;
+        return "redirect:" + res;
     }
 
-    private String processErrorReload(String code, Model model, HttpServletResponse response, String errorCode, String error) {
+    private String processErrorReload(String code, Model model, HttpServletResponse response, String errorCode, String error, String pathPrefix) {
         ExpiringCode expiringCode = expiringCodeStore.retrieveCode(code, identityZoneManager.getCurrentIdentityZoneId());
         Map<String, String> codeData = JsonUtils.readValue(expiringCode.getData(), new TypeReference<>() {
         });
@@ -300,9 +310,11 @@ public class InvitationsController {
 
             model.addAttribute(errorCode, error);
             model.addAttribute("code", newCode);
-            return "redirect:accept";
+            String redirectTarget = (pathPrefix != null && !pathPrefix.isEmpty()) ? pathPrefix + "/invitations/accept" : "accept";
+            return "redirect:" + redirectTarget;
         } catch (EmptyResultDataAccessException noProviderFound) {
             log.debug("No available invitation providers for email:%s, id:%s".formatted(codeData.get(EMAIL), codeData.get("user_id")));
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message_code", "no_suitable_idp", "invitations/accept_invite");
         }
     }
@@ -312,7 +324,8 @@ public class InvitationsController {
             @RequestParam("enterprise_password") String password,
             @RequestParam("enterprise_email") String email,
             @RequestParam String code,
-            Model model, HttpServletResponse response) {
+            Model model, HttpServletRequest request, HttpServletResponse response) {
+        String pathPrefix = UaaUrlUtils.getZonePathPrefix(request);
 
         ExpiringCode expiringCode = expiringCodeStore.retrieveCode(code, identityZoneManager.getCurrentIdentityZoneId());
         if (expiringCode == null) {
@@ -330,9 +343,11 @@ public class InvitationsController {
             authenticationManager = zoneAwareAuthenticationManager.getLdapAuthenticationManager(identityZoneManager.getCurrentIdentityZone(), ldapProvider).getLdapManagerActual();
         } catch (EmptyResultDataAccessException e) {
             //ldap provider was not available
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message_code", "no_suitable_idp", "invitations/accept_invite");
         } catch (Exception x) {
             log.error("Unable to retrieve LDAP config.", x);
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message_code", "no_suitable_idp", "invitations/accept_invite");
         }
         Authentication authentication;
@@ -345,6 +360,7 @@ public class InvitationsController {
                 model.addAttribute(EMAIL, data.get(EMAIL));
                 model.addAttribute("provider", OriginKeys.LDAP);
                 model.addAttribute("code", expiringCodeStore.generateCode(expiringCode.getData(), new Timestamp(System.currentTimeMillis() + (10 * 60 * 1000)), null, identityZoneManager.getCurrentIdentityZoneId()).getCode());
+                model.addAttribute("pathPrefix", pathPrefix);
                 return handleUnprocessableEntity(model, response, "error_message", "invite.email_mismatch", "invitations/accept_invite");
             }
 
@@ -354,16 +370,19 @@ public class InvitationsController {
                 userProvisioning.update(user.getId(), user, identityZoneManager.getCurrentIdentityZoneId());
                 zoneAwareAuthenticationManager.getLdapAuthenticationManager(identityZoneManager.getCurrentIdentityZone(), ldapProvider).authenticate(token);
                 AcceptedInvitation accept = invitationsService.acceptInvitation(newCode, "");
-                return "redirect:" + "/login?success=invite_accepted&form_redirect_uri=" + URLEncoder.encode(accept.getRedirectUri(), StandardCharsets.UTF_8);
+                return "redirect:" + pathPrefix + "/login?success=invite_accepted&form_redirect_uri=" + URLEncoder.encode(accept.getRedirectUri(), StandardCharsets.UTF_8);
             } else {
+                model.addAttribute("pathPrefix", pathPrefix);
                 return handleUnprocessableEntity(model, response, "error_message", "not authenticated", "invitations/accept_invite");
             }
         } catch (AuthenticationException x) {
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message", x.getMessage(), "invitations/accept_invite");
         } catch (Exception x) {
             log.error("Unable to authenticate against LDAP", x);
             model.addAttribute("ldap", true);
             model.addAttribute(EMAIL, email);
+            model.addAttribute("pathPrefix", pathPrefix);
             return handleUnprocessableEntity(model, response, "error_message", "bad_credentials", "invitations/accept_invite");
         }
     }

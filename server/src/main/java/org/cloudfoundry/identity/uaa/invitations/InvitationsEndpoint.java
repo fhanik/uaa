@@ -67,7 +67,7 @@ public class InvitationsEndpoint {
         this.expiringCodeStore = expiringCodeStore;
     }
 
-    @PostMapping(value = {"/invite_users", "/invite_users/"}, consumes = "application/json")
+    @PostMapping(value = {"/invite_users", "/invite_users/", "/z/{subdomain}/invite_users", "/z/{subdomain}/invite_users/"}, consumes = "application/json")
     public ResponseEntity<InvitationsResponse> inviteUsers(@RequestBody InvitationsRequest invitations,
             @RequestParam(value = "client_id", required = false) String clientId,
             @RequestParam(value = "redirect_uri") String redirectUri) {
@@ -85,6 +85,7 @@ public class InvitationsEndpoint {
         List<IdentityProvider> activeProviders = identityProviderProvisioning.retrieveActive(IdentityZoneHolder.get().getId());
 
         HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+        String pathPrefix = UaaUrlUtils.getZonePathPrefix(request);
         String subdomainHeader = request.getHeader(SUBDOMAIN_HEADER);
         String zoneIdHeader = request.getHeader(HEADER);
 
@@ -94,13 +95,16 @@ public class InvitationsEndpoint {
             client = multitenantClientServices.loadClientByClientId(clientId, IdentityZoneHolder.get().getId());
         }
 
+        String acceptPath = (pathPrefix != null && !pathPrefix.isEmpty()) ? pathPrefix + "/invitations/accept" : "/invitations/accept";
+        boolean useSubdomainHost = !IdentityZoneHolder.isUaa() && (pathPrefix == null || pathPrefix.isEmpty());
+
         for (String email : invitations.getEmails()) {
             try {
                 if (email != null && validateEmail(email)) {
                     List<IdentityProvider> providers = filter(activeProviders, client, email);
                     if (providers.size() == 1) {
                         ScimUser user = findOrCreateUser(email, providers.getFirst().getOriginKey());
-                        String accountsUrl = UaaUrlUtils.getUaaUrl("/invitations/accept", !IdentityZoneHolder.isUaa(), IdentityZoneHolder.get());
+                        String accountsUrl = UaaUrlUtils.getUaaUrl(acceptPath, useSubdomainHost, IdentityZoneHolder.get());
 
                         Map<String, String> data = new HashMap<>();
                         data.put(USER_ID, user.getId());

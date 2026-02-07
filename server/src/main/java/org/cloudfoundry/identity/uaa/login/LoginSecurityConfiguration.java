@@ -403,12 +403,12 @@ class LoginSecurityConfiguration {
     ) throws Exception {
         var originalChain = http
                 .securityMatcher(
-                        "/invitations/**"
+                        "/invitations/**", "/z/*/invitations/**"
                 )
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers(HttpMethod.GET, "/invitations/accept").access(anyOf().anonymous().fullyAuthenticated());
-                    auth.requestMatchers(HttpMethod.POST, "/invitations/accept.do").hasAuthority("uaa.invited");
-                    auth.requestMatchers(HttpMethod.POST, "/invitations/accept_enterprise.do").hasAuthority("uaa.invited");
+                    auth.requestMatchers(HttpMethod.GET, "/invitations/accept", "/z/*/invitations/accept").access(anyOf().anonymous().fullyAuthenticated());
+                    auth.requestMatchers(HttpMethod.POST, "/invitations/accept.do", "/z/*/invitations/accept.do").hasAuthority("uaa.invited");
+                    auth.requestMatchers(HttpMethod.POST, "/invitations/accept_enterprise.do", "/z/*/invitations/accept_enterprise.do").hasAuthority("uaa.invited");
                     auth.anyRequest().denyAll();
 
                 })
@@ -436,7 +436,7 @@ class LoginSecurityConfiguration {
             @Qualifier("resourceAgnosticAuthenticationFilter") FilterRegistrationBean<OAuth2AuthenticationProcessingFilter> oauth2ResourceFilter
     ) throws Exception {
         var originalChain = http
-                .securityMatcher("/invite_users/**")
+                .securityMatcher("/invite_users/**", "/z/*/invite_users/**")
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.POST, "/**").access(
                             anyOf().isUaaAdmin()
