@@ -252,11 +252,24 @@ class CodeStoreEndpointsMockMvcTests {
                 .accept(MediaType.APPLICATION_JSON)
                 .content(requestBody);
 
-        mockMvc.perform(post)
+        MvcResult createResult = mockMvc.perform(post)
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        assertThat(jdbcTemplate.queryForObject("select count(*) from expiring_code_store", Integer.class)).isOne();
+        ExpiringCode newCode = JsonUtils.readValue(createResult.getResponse().getContentAsString(), ExpiringCode.class);
+        long now = System.currentTimeMillis();
+        // Resilient to race: cleanup may not run if another thread won the CAS. Assert exactly one non-expired
+        // code exists and it is the one we just created (so we pass whether or not the throttled cleanup ran).
+        Integer nonExpiredCount = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM expiring_code_store WHERE expiresat > ?",
+                Integer.class,
+                now);
+        assertThat(nonExpiredCount).isOne();
+        String storedCode = jdbcTemplate.queryForObject(
+                "SELECT code FROM expiring_code_store WHERE expiresat > ?",
+                String.class,
+                now);
+        assertThat(storedCode).isEqualTo(newCode.getCode());
     }
 
     @Nested
