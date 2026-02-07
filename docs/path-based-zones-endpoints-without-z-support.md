@@ -17,7 +17,7 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 4.  ✅ [Force password change (UI)](#4-force-password-change-ui)
 5.  ✅ [Logged out (UI)](#5-logged-out-ui)
 6.  ✅ [Home and error pages (UI)](#6-home-and-error-pages-ui)
-7.  ❌ [Session (UI)](#7-session-ui)
+7.  ✅ [Session (UI)](#7-session-ui)
 8.  ❌ [Invitations (UI + API)](#8-invitations-ui--api)
 9.  ❌ [Profile (UI)](#9-profile-ui)
 10. ❌ [Passcode (API / UI)](#10-passcode-api--ui)

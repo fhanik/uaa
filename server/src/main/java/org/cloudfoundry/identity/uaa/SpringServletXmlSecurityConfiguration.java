@@ -64,8 +64,8 @@ public class SpringServletXmlSecurityConfiguration {
             "/saml_error",
             "/favicon.ico",
             "/oauth_error",
-            "/session",
-            "/session_management",
+            "/session", "/z/*/session",
+            "/session_management", "/z/*/session_management",
             "/oauth/token/.well-known/openid-configuration", "/z/*/oauth/token/.well-known/openid-configuration",
             "/.well-known/openid-configuration", "/z/*/.well-known/openid-configuration",
             "/logged_out", "/z/*/logged_out"
