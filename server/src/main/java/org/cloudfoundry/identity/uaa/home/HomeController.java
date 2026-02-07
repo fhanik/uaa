@@ -7,6 +7,7 @@ import org.cloudfoundry.identity.uaa.client.ClientMetadata;
 import org.cloudfoundry.identity.uaa.client.JdbcClientMetadataProvisioning;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
 import org.cloudfoundry.identity.uaa.util.UaaStringUtils;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
@@ -66,8 +67,8 @@ public class HomeController {
         model.addAllAttributes(new HashMap<>());
     }
 
-    @RequestMapping(value = {"/", "/home"})
-    public String home(Model model, Principal principal) {
+    @RequestMapping(value = {"/", "/home", "/z/{subdomain}/", "/z/{subdomain}/home"})
+    public String home(Model model, Principal principal, HttpServletRequest request) {
         IdentityZone identityZone = getIdentityZone();
         IdentityZoneConfiguration config = identityZone.getConfig();
         String homePage =
@@ -79,6 +80,7 @@ public class HomeController {
             return "redirect:" + homePage;
         }
 
+        model.addAttribute("pathPrefix", UaaUrlUtils.getZonePathPrefix(request));
         model.addAttribute("principal", principal);
 
         List<TileData> tiles = new ArrayList<>();
@@ -117,7 +119,7 @@ public class HomeController {
         return clientMetadata.isShowOnHomePage() && clientMetadata.getAppLaunchUrl() != null;
     }
 
-    @RequestMapping("/error500")
+    @RequestMapping(value = {"/error500", "/z/{subdomain}/error500"})
     public String error500(Model model, HttpServletRequest request, HttpServletResponse response) {
         Throwable genericException = (Throwable) request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
         logger.error("Internal error", genericException);
@@ -135,7 +137,7 @@ public class HomeController {
     }
 
     @SuppressWarnings("java:S3752")
-    @RequestMapping(path = "/error429", method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.DELETE, RequestMethod.PUT, RequestMethod.PATCH})
+    @RequestMapping(path = {"/error429", "/z/{subdomain}/error429"}, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.DELETE, RequestMethod.PUT, RequestMethod.PATCH})
     @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
     @ResponseBody
     public JsonError error429Json(HttpServletRequest request) {
@@ -147,19 +149,19 @@ public class HomeController {
     }
 
     @SuppressWarnings("java:S3752")
-    @RequestMapping(path = "/error429", produces = MediaType.TEXT_HTML_VALUE, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.DELETE, RequestMethod.PUT, RequestMethod.PATCH})
+    @RequestMapping(path = {"/error429", "/z/{subdomain}/error429"}, produces = MediaType.TEXT_HTML_VALUE, method = {RequestMethod.GET, RequestMethod.POST, RequestMethod.DELETE, RequestMethod.PUT, RequestMethod.PATCH})
     public String error429(Model model, HttpServletRequest request) {
         model.addAttribute(RATE_LIMIT_ERROR_ATTRIBUTE, request.getAttribute(RATE_LIMIT_ERROR_ATTRIBUTE));
         return "error429";
     }
 
-    @RequestMapping({"/error", "/error**"})
-    public String errorGeneric(Model model) {
+    @RequestMapping({"/error", "/error**", "/z/{subdomain}/error", "/z/{subdomain}/error**"})
+    public String errorGeneric(Model model, HttpServletRequest request) {
         populateBuildAndLinkInfo(model);
         return ERROR;
     }
 
-    @RequestMapping("/saml_error")
+    @RequestMapping({"/saml_error", "/z/{subdomain}/saml_error"})
     public String error401(Model model, HttpServletRequest request) {
         AuthenticationException exception = SessionUtils.getAuthenticationException(request.getSession());
         if (nonNull(exception)) {
@@ -168,7 +170,7 @@ public class HomeController {
         return EXTERNAL_AUTH_ERROR;
     }
 
-    @RequestMapping("/oauth_error")
+    @RequestMapping({"/oauth_error", "/z/{subdomain}/oauth_error"})
     public String error_oauth(Model model, HttpServletRequest request) {
         String oauthError = "oauth_error";
         String exception = (String) request.getSession().getAttribute(oauthError);
@@ -180,13 +182,15 @@ public class HomeController {
         return EXTERNAL_AUTH_ERROR;
     }
 
-    @RequestMapping("/rejected")
+    @RequestMapping({"/rejected", "/z/{subdomain}/rejected"})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public String handleRequestRejected(Model model,
-            @RequestAttribute(RequestDispatcher.ERROR_EXCEPTION) RequestRejectedException ex,
-            @RequestAttribute(RequestDispatcher.ERROR_REQUEST_URI) String uri) {
+    public String handleRequestRejected(Model model, HttpServletRequest request,
+            @RequestAttribute(value = RequestDispatcher.ERROR_EXCEPTION, required = false) RequestRejectedException ex,
+            @RequestAttribute(value = RequestDispatcher.ERROR_REQUEST_URI, required = false) String uri) {
 
-        logger.error("Request with encoded URI [{}] rejected. {}", URLEncoder.encode(uri, StandardCharsets.UTF_8), ex.getMessage());
+        String uriForLog = uri != null ? uri : request.getRequestURI();
+        RequestRejectedException exForLog = ex != null ? ex : new RequestRejectedException("Request rejected");
+        logger.error("Request with encoded URI [{}] rejected. {}", URLEncoder.encode(uriForLog, StandardCharsets.UTF_8), exForLog.getMessage());
         model.addAttribute("oauth_error", "The request was rejected because it contained a potentially malicious character.");
 
         return EXTERNAL_AUTH_ERROR;
