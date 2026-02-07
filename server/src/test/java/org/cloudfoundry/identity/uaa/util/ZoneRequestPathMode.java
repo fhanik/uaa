@@ -1,5 +1,7 @@
 package org.cloudfoundry.identity.uaa.util;
 
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
+import org.cloudfoundry.identity.uaa.zone.MultitenancyFixture;
 import org.springframework.mock.web.MockHttpServletRequest;
 
 /**
@@ -20,8 +22,16 @@ public enum ZoneRequestPathMode {
         return subdomain;
     }
 
+    /** Path prefix for redirects/links: "" for DEFAULT, "/z/test-zone" for ZONE_PATH. */
     public String redirectPrefix() {
         return subdomain.isEmpty() ? "" : "/z/" + subdomain;
+    }
+
+    /** Sets IdentityZoneHolder so it matches this mode. ZONE_PATH uses a test zone; DEFAULT leaves current zone. */
+    public void setZone() {
+        if (this == ZONE_PATH) {
+            IdentityZoneHolder.set(MultitenancyFixture.identityZone("test-zone-id", subdomain));
+        }
     }
 
     public void applyRequestPath(MockHttpServletRequest request, String pathSuffix) {
