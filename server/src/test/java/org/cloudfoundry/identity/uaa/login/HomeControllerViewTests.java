@@ -92,6 +92,11 @@ class HomeControllerViewTests extends TestClassNullifier {
         return prefix.isEmpty() ? "href=\"" + path + "\"" : "href=\"" + prefix + path + "\"";
     }
 
+    /** Expected resource path in response (e.g. script src, img src): always {@code /resources/...} (resources are not under /z/{subdomain}/). */
+    private static String expectedResourcePath(ZoneRequestPathMode mode, String path) {
+        return path;
+    }
+
     /** Ensures current zone has test branding so error-page assertions (footer, logo) pass for ZONE_PATH. */
     private void applyTestBrandingToCurrentZone() {
         IdentityZoneConfiguration newConfiguration = new IdentityZoneConfiguration();
@@ -212,9 +217,10 @@ class HomeControllerViewTests extends TestClassNullifier {
     @EnumSource(ZoneRequestPathMode.class)
     void errorPageContainsCorrectResourceLink(ZoneRequestPathMode mode) throws Exception {
         mode.setZone();
+        String imagePath = "/resources/images/sad_cloud.png";
         mockMvc.perform(request(mode, "/error"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString("src=\"/resources/images/sad_cloud.png\"")));
+                .andExpect(content().string(containsString("src=\"" + expectedResourcePath(mode, imagePath) + "\"")));
     }
 
     static Stream<Arguments> errorBrandingParams() {
