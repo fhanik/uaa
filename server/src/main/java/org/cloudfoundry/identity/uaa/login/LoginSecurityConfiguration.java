@@ -141,8 +141,9 @@ class LoginSecurityConfiguration {
         var requestMatcher = new UaaRequestMatcher("/authenticate");
         requestMatcher.setAccept(List.of(MediaType.APPLICATION_JSON_VALUE));
         requestMatcher.setHeaders(Map.of("Authorization", List.of("bearer ")));
+        var zonePathMatcher = requestMatcher.withZonePaths();
         var originalChain = http
-                .securityMatcher(requestMatcher)
+                .securityMatcher(zonePathMatcher)
                 .authorizeHttpRequests(auth -> auth.anyRequest().fullyAuthenticated())
                 .authenticationManager(loginAuthenticationManager)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.NEVER))
@@ -172,7 +173,7 @@ class LoginSecurityConfiguration {
     @Order(FilterChainOrder.AUTHENTICATE_CATCH_ALL)
     UaaFilterChain authenticateCatchAll(HttpSecurity http) throws Exception {
         var originalChain = http
-                .securityMatcher("/authenticate/**")
+                .securityMatcher("/authenticate/**", "/z/*/authenticate/**")
                 .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
                 .csrf(CsrfConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

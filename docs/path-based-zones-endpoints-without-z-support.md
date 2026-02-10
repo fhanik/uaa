@@ -22,7 +22,7 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 9.  ✅ [Profile (UI)](#9-profile-ui)
 10. ✅ [Passcode (API / UI)](#10-passcode-api--ui)
 11. ❌ [OAuth / token / client admin (API)](#11-oauth--token--client-admin-api-not-yet-covered-by-z)
-12. ❌ [Authenticate (API)](#12-authenticate-api)
+12. ✅ [Authenticate (API)](#12-authenticate-api)
 13. ❌ [Disable User Management and Rate Limiter](#12-authenticate-api)
 14. ❌ [Zone Switching - Path Aware Zone Sessions](#13-zone-switching---path-aware-zone-sessions)
 15. ❌ [HTML Content - Pages and Emails](#summary-high-level)

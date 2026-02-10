@@ -601,6 +601,32 @@ public class LoginMockMvcTests {
                 .andExpect(content().string(containsString("\"origin\":\"uaa\"")));
     }
 
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void post_authenticate_within_zone(ZoneResolutionMode mode) throws Exception {
+        assumeFalse(isLimitedMode(limitedModeUaaFilter.getFilter()), "Zone creation returns 503 in limited mode.");
+        String subdomain = new AlphanumericRandomValueStringGenerator().generate().toLowerCase();
+        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
+                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
+        adminClient.setClientSecret("admin-secret");
+        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
+        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mockMvc, "admin", "admin-secret", null, subdomain);
+        String username = generator.generate() + "@test.org";
+        ScimUser user = new ScimUser(null, username, "givenname", "familyname");
+        user.setPrimaryEmail(username);
+        user.setPassword("secret");
+        user = MockMvcUtils.createUserInZone(mockMvc, adminToken, user, zoneResult.getIdentityZone().getSubdomain());
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/authenticate")
+                        .accept(MediaType.APPLICATION_JSON_VALUE)
+                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("username", user.getUserName())
+                        .param("password", "secret"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("\"username\":\"" + user.getUserName())))
+                .andExpect(content().string(containsString("\"email\":\"" + user.getPrimaryEmail())));
+    }
+
     @Test
     void previous_login_time_upon_authentication() throws Exception {
         ScimUser user = createUser(scimUserProvisioning, generator, IdentityZone.getUaaZoneId());
