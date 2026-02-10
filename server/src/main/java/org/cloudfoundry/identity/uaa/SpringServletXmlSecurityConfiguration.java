@@ -73,7 +73,9 @@ public class SpringServletXmlSecurityConfiguration {
 
     private final String[] secFilterOpenSamlEndPoints = {
             "/saml/metadata/**",
-            "/saml/metadata"
+            "/saml/metadata",
+            "/z/*/saml/metadata/**",
+            "/z/*/saml/metadata"
     };
 
     private final String[] secFilterOpenHealthzEndPoints = {

@@ -41,12 +41,12 @@ public class SamlMetadataEndpoint implements ZoneAware {
     }
 
     //Used in order to actually map 401 errors to invalid requests
-    @GetMapping(value = "/saml/metadata/**", produces = APPLICATION_XML_CHARSET_UTF_8)
+    @GetMapping(value = {"/saml/metadata/**", "/z/{subdomain}/saml/metadata/**"}, produces = APPLICATION_XML_CHARSET_UTF_8)
     public ResponseEntity<String> metadata401Error(HttpServletRequest request) {
         return ResponseEntity.status(HttpServletResponse.SC_UNAUTHORIZED).build();
     }
 
-    @GetMapping(value = {"/saml/metadata", "/saml/metadata/"}, produces = APPLICATION_XML_CHARSET_UTF_8)
+    @GetMapping(value = {"/saml/metadata", "/saml/metadata/", "/z/{subdomain}/saml/metadata", "/z/{subdomain}/saml/metadata/"}, produces = APPLICATION_XML_CHARSET_UTF_8)
     public ResponseEntity<String> metadataEndpoint(HttpServletRequest request) {
         RelyingPartyRegistration relyingPartyRegistration = relyingPartyRegistrationResolver.resolve(request, DEFAULT_REGISTRATION_ID);
         if (relyingPartyRegistration == null) {
