@@ -33,7 +33,7 @@ public class PasscodeEndpoint {
         this.expiringCodeStore = expiringCodeStore;
     }
 
-    @GetMapping(value = {"/passcode"})
+    @GetMapping(value = {"/passcode", "/z/{subdomain}/passcode"})
     public String generatePasscode(Map<String, Object> model, Principal principal) {
         Map<String, Object> authorizationParameters = null;
 
