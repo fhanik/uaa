@@ -142,20 +142,20 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 
 ## 11. OAuth / token / client admin (API – not yet covered by /z/)
 
-| Endpoint(s)                              | Controller / Class | Controller has /z/? | Security has /z/*/? | Tests that touch these endpoints |
-|------------------------------------------|--------------------|---------------------|----------------------|-----------------------------------|
-| ✅ `/oauth/confirm_access`               | AccessController | No | No | — |
-| ✅ `/oauth/error`                        | AccessController | No | No | — |
-| `/oauth/token/revoke/user/{userId}` etc. | TokenRevocationEndpoint | No | No (OauthEndpointSecurityConfiguration /oauth/token/revoke/** has no /z/) | — |
-| ✅ `/check_token`                        | CheckTokenEndpoint | No | No | — |
-| ✅ `/introspect`                         | IntrospectEndpoint | No | No | — |
-| ✅ `/oauth/clients/**`                   | ClientAdminEndpoints, ClientMetadataAdminEndpoints | No | No (ClientAdminSecurityConfiguration has no /z/) | — |
-| `/identity-providers/**`                 | IdentityProviderEndpoints | No | No (IdentityZoneSecurityConfiguration has no /z/) | — |
-| `/identity-zones/**`                     | — | No | No | IdentityZoneEndpointsMockMvcTests (already parameterized for zone path in tests) |
-| `/Codes/**`                              | CodeStoreEndpoints | No | No | — |
-| `/email_verifications`, `/email_changes` | ChangeEmailEndpoints (SCIM) | No | No | — |
-| `/RateLimitingStatus/**`                 | RateLimitStatusController | No | No | — |
-| ✅ `/saml/metadata`, `/saml/metadata/`   | SamlMetadataEndpoint | No | No (secFilterOpenSamlEndPoints has no /z/) | — |
+| Endpoint(s)                                | Controller / Class | Controller has /z/? | Security has /z/*/? | Tests that touch these endpoints |
+|--------------------------------------------|--------------------|---------------------|----------------------|-----------------------------------|
+| ✅ `/oauth/confirm_access`                 | AccessController | No | No | — |
+| ✅ `/oauth/error`                          | AccessController | No | No | — |
+| ✅ `/oauth/token/revoke/user/{userId}` etc.| TokenRevocationEndpoint | No | No (OauthEndpointSecurityConfiguration /oauth/token/revoke/** has no /z/) | — |
+| ✅ `/check_token`                          | CheckTokenEndpoint | No | No | — |
+| ✅ `/introspect`                           | IntrospectEndpoint | No | No | — |
+| ✅ `/oauth/clients/**`                     | ClientAdminEndpoints, ClientMetadataAdminEndpoints | No | No (ClientAdminSecurityConfiguration has no /z/) | — |
+| `/identity-providers/**`                   | IdentityProviderEndpoints | No | No (IdentityZoneSecurityConfiguration has no /z/) | — |
+| `/identity-zones/**`                       | — | No | No | IdentityZoneEndpointsMockMvcTests (already parameterized for zone path in tests) |
+| `/Codes/**`                                | CodeStoreEndpoints | No | No | — |
+| `/email_verifications`, `/email_changes`   | ChangeEmailEndpoints (SCIM) | No | No | — |
+| `/RateLimitingStatus/**`                   | RateLimitStatusController | No | No | — |
+| ✅ `/saml/metadata`, `/saml/metadata/`     | SamlMetadataEndpoint | No | No (secFilterOpenSamlEndPoints has no /z/) | — |
 
 ---
 

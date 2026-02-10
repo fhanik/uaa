@@ -64,7 +64,7 @@ public class TokenRevocationEndpoint implements ApplicationEventPublisherAware {
         this.generator = new RandomValueStringGenerator(8);
     }
 
-    @RequestMapping("/oauth/token/revoke/user/{userId}")
+    @RequestMapping({"/oauth/token/revoke/user/{userId}", "/z/{subdomain}/oauth/token/revoke/user/{userId}"})
     public ResponseEntity<Void> revokeTokensForUser(@PathVariable String userId) {
         logger.debug("Revoking tokens for user: " + userId);
         String zoneId = IdentityZoneHolder.get().getId();
@@ -76,7 +76,7 @@ public class TokenRevocationEndpoint implements ApplicationEventPublisherAware {
         return new ResponseEntity<>(OK);
     }
 
-    @RequestMapping("/oauth/token/revoke/user/{userId}/client/{clientId}")
+    @RequestMapping({"/oauth/token/revoke/user/{userId}/client/{clientId}", "/z/{subdomain}/oauth/token/revoke/user/{userId}/client/{clientId}"})
     public ResponseEntity<Void> revokeTokensForUserAndClient(@PathVariable String userId, @PathVariable String clientId) {
         String zoneId = IdentityZoneHolder.get().getId();
         logger.debug("Revoking tokens for user " + userId + " and client " + clientId);
@@ -89,7 +89,7 @@ public class TokenRevocationEndpoint implements ApplicationEventPublisherAware {
         return new ResponseEntity<>(OK);
     }
 
-    @RequestMapping("/oauth/token/revoke/client/{clientId}")
+    @RequestMapping({"/oauth/token/revoke/client/{clientId}", "/z/{subdomain}/oauth/token/revoke/client/{clientId}"})
     public ResponseEntity<Void> revokeTokensForClient(@PathVariable String clientId) {
         logger.debug("Revoking tokens for client: " + clientId);
         String zoneId = IdentityZoneHolder.get().getId();
@@ -102,7 +102,7 @@ public class TokenRevocationEndpoint implements ApplicationEventPublisherAware {
         return new ResponseEntity<>(OK);
     }
 
-    @DeleteMapping(value = "/oauth/token/revoke/{tokenId}")
+    @DeleteMapping(value = {"/oauth/token/revoke/{tokenId}", "/z/{subdomain}/oauth/token/revoke/{tokenId}"})
     public ResponseEntity<Void> revokeTokenById(@PathVariable String tokenId) {
         logger.debug("Revoking token with ID:" + tokenId);
         String zoneId = IdentityZoneHolder.get().getId();

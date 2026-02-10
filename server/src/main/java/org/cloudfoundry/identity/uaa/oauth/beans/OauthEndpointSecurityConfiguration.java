@@ -235,17 +235,17 @@ class OauthEndpointSecurityConfiguration {
     @Order(FilterChainOrder.OAUTH_01)
     UaaFilterChain tokenRevocationFilter(HttpSecurity http, @Qualifier("self") IsSelfCheck selfCheck) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/oauth/token/revoke/**")
+                .securityMatcher("/oauth/token/revoke/**", "/z/*/oauth/token/revoke/**")
                 .authorizeHttpRequests( auth -> {
-                    auth.requestMatchers("/oauth/token/revoke/client/**").access(anyOf(true).hasScope("tokens.revoke").isUaaAdmin().isZoneAdmin());
-                    auth.requestMatchers("/oauth/token/revoke/user/*/client/**").access(anyOf(true).hasScope("tokens.revoke").isUaaAdmin().isZoneAdmin()
+                    auth.requestMatchers("/oauth/token/revoke/client/**", "/z/*/oauth/token/revoke/client/**").access(anyOf(true).hasScope("tokens.revoke").isUaaAdmin().isZoneAdmin());
+                    auth.requestMatchers("/oauth/token/revoke/user/*/client/**", "/z/*/oauth/token/revoke/user/*/client/**").access(anyOf(true).hasScope("tokens.revoke").isUaaAdmin().isZoneAdmin()
                             .or(SelfCheckAuthorizationManager.isClientUserTokenRevocationForSelf(selfCheck, 6, 4))
                     );
-                    auth.requestMatchers("/oauth/token/revoke/user/**").access(anyOf(true)
+                    auth.requestMatchers("/oauth/token/revoke/user/**", "/z/*/oauth/token/revoke/user/**").access(anyOf(true)
                             .hasScope("tokens.revoke").isUaaAdmin()
                             .or(SelfCheckAuthorizationManager.isUserTokenRevocationForSelf(selfCheck, 4))
                     );
-                    auth.requestMatchers(HttpMethod.DELETE, "/oauth/token/revoke/**").access(anyOf(true)
+                    auth.requestMatchers(HttpMethod.DELETE, "/oauth/token/revoke/**", "/z/*/oauth/token/revoke/**").access(anyOf(true)
                             .hasScope("tokens.revoke")
                             .or(SelfCheckAuthorizationManager.isTokenRevocationForSelf(selfCheck, 3))
                     );
