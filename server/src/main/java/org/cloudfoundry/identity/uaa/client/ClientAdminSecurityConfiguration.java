@@ -36,24 +36,24 @@ class ClientAdminSecurityConfiguration {
             @Qualifier("clientAdminOAuth2ResourceFilter") FilterRegistrationBean<OAuth2AuthenticationProcessingFilter> resourceFilter
     ) throws Exception {
         var originalChain = http
-                .securityMatcher("/oauth/clients/**")
+                .securityMatcher("/oauth/clients/**", "/z/*/oauth/clients/**")
                 .authorizeHttpRequests(auth -> {
 
-                    auth.requestMatchers("/oauth/clients/*/secret").access(isAdminOrHasScopes("clients.secret"));
+                    auth.requestMatchers("/oauth/clients/*/secret", "/z/*/oauth/clients/*/secret").access(isAdminOrHasScopes("clients.secret"));
 
-                    auth.requestMatchers("/oauth/clients/*/clientjwt").access(isAdminOrHasScopes("clients.trust"));
+                    auth.requestMatchers("/oauth/clients/*/clientjwt", "/z/*/oauth/clients/*/clientjwt").access(isAdminOrHasScopes("clients.trust"));
 
-                    auth.requestMatchers(HttpMethod.POST, "/oauth/clients/tx/**").access(isAdminOrHasScopes());
-                    auth.requestMatchers(HttpMethod.PUT, "/oauth/clients/tx/**").access(isAdminOrHasScopes());
-                    auth.requestMatchers(HttpMethod.DELETE, "/oauth/clients/tx/**").access(isAdminOrHasScopes());
+                    auth.requestMatchers(HttpMethod.POST, "/oauth/clients/tx/**", "/z/*/oauth/clients/tx/**").access(isAdminOrHasScopes());
+                    auth.requestMatchers(HttpMethod.PUT, "/oauth/clients/tx/**", "/z/*/oauth/clients/tx/**").access(isAdminOrHasScopes());
+                    auth.requestMatchers(HttpMethod.DELETE, "/oauth/clients/tx/**", "/z/*/oauth/clients/tx/**").access(isAdminOrHasScopes());
 
-                    auth.requestMatchers(HttpMethod.GET, "oauth/clients/meta", "/oauth/clients/*/meta").fullyAuthenticated();
+                    auth.requestMatchers(HttpMethod.GET, "/oauth/clients/meta", "/oauth/clients/*/meta", "/z/*/oauth/clients/meta", "/z/*/oauth/clients/*/meta").fullyAuthenticated();
 
-                    auth.requestMatchers(HttpMethod.GET, "/oauth/clients/**").access(isAdminOrHasScopes("clients.read"));
+                    auth.requestMatchers(HttpMethod.GET, "/oauth/clients/**", "/z/*/oauth/clients/**").access(isAdminOrHasScopes("clients.read"));
 
-                    auth.requestMatchers(HttpMethod.POST, "/oauth/clients/**").access(isAdminOrHasScopes("clients.write"));
-                    auth.requestMatchers(HttpMethod.PUT, "/oauth/clients/**").access(isAdminOrHasScopes("clients.write"));
-                    auth.requestMatchers(HttpMethod.DELETE, "/oauth/clients/**").access(isAdminOrHasScopes("clients.write"));
+                    auth.requestMatchers(HttpMethod.POST, "/oauth/clients/**", "/z/*/oauth/clients/**").access(isAdminOrHasScopes("clients.write"));
+                    auth.requestMatchers(HttpMethod.PUT, "/oauth/clients/**", "/z/*/oauth/clients/**").access(isAdminOrHasScopes("clients.write"));
+                    auth.requestMatchers(HttpMethod.DELETE, "/oauth/clients/**", "/z/*/oauth/clients/**").access(isAdminOrHasScopes("clients.write"));
 
                     auth.anyRequest().denyAll();
                 })

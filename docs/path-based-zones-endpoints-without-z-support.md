@@ -149,7 +149,7 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 | `/oauth/token/revoke/user/{userId}` etc. | TokenRevocationEndpoint | No | No (OauthEndpointSecurityConfiguration /oauth/token/revoke/** has no /z/) | — |
 | `/check_token`                           | CheckTokenEndpoint | No | No | — |
 | `/introspect`                            | IntrospectEndpoint | No | No | — |
-| `/oauth/clients/**`                      | ClientAdminEndpoints, ClientMetadataAdminEndpoints | No | No (ClientAdminSecurityConfiguration has no /z/) | — |
+| ✅ `/oauth/clients/**`                   | ClientAdminEndpoints, ClientMetadataAdminEndpoints | No | No (ClientAdminSecurityConfiguration has no /z/) | — |
 | `/identity-providers/**`                 | IdentityProviderEndpoints | No | No (IdentityZoneSecurityConfiguration has no /z/) | — |
 | `/identity-zones/**`                     | — | No | No | IdentityZoneEndpointsMockMvcTests (already parameterized for zone path in tests) |
 | `/Codes/**`                              | CodeStoreEndpoints | No | No | — |

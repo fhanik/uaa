@@ -38,7 +38,7 @@ public class ClientMetadataAdminEndpoints {
         };
     }
 
-    @GetMapping("/oauth/clients/{client}/meta")
+    @GetMapping({"/oauth/clients/{client}/meta", "/z/{subdomain}/oauth/clients/{client}/meta"})
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public ClientMetadata retrieveClientMetadata(@PathVariable("client") String clientId) {
@@ -49,14 +49,14 @@ public class ClientMetadataAdminEndpoints {
         }
     }
 
-    @GetMapping("/oauth/clients/meta")
+    @GetMapping({"/oauth/clients/meta", "/z/{subdomain}/oauth/clients/meta"})
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public List<ClientMetadata> retrieveAllClientMetadata() {
         return clientMetadataProvisioning.retrieveAll(IdentityZoneHolder.get().getId());
     }
 
-    @PutMapping("/oauth/clients/{client}/meta")
+    @PutMapping({"/oauth/clients/{client}/meta", "/z/{subdomain}/oauth/clients/{client}/meta"})
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public ClientMetadata updateClientMetadata(@RequestBody ClientMetadata clientMetadata,

@@ -23,6 +23,7 @@ import org.cloudfoundry.identity.uaa.client.event.ClientUpdateEvent;
 import org.cloudfoundry.identity.uaa.client.event.SecretChangeEvent;
 import org.cloudfoundry.identity.uaa.client.event.SecretFailureEvent;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientDetailsCreation;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientDetailsModification;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientJwtChangeRequest;
@@ -51,7 +52,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.http.HttpMethod;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -508,105 +511,215 @@ class ClientAdminEndpointsMockMvcTests {
         verify(mockApplicationEventPublisher, times(0)).publishEvent(abstractUaaEventCaptor.capture());
     }
 
-    @Test
-    void in_zone_client_write_failure_with_min_length_secret() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    private static UaaClientDetails zoneAdminClientForOAuthClients() {
+        UaaClientDetails c = new UaaClientDetails("zone-admin", "", "clients.read,openid", "client_credentials", "clients.read,clients.write,openid", "http://redirect.url");
+        c.setClientSecret("zone-admin-secret");
+        return c;
+    }
+
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_failure_with_min_length_secret(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
         result.getIdentityZone().getConfig().setClientSecretPolicy(new ClientSecretPolicy(7, 255, 0, 0, 0, 0, 6));
         MockMvcUtils.setZoneConfiguration(webApplicationContext, result.getIdentityZone().getId(), result.getIdentityZone().getConfig());
 
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://sample.redirect");
         client.setClientSecret("secret");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isBadRequest());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void in_zone_client_write_failure_with_secret_too_long() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_failure_with_secret_too_long(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
         result.getIdentityZone().getConfig().setClientSecretPolicy(new ClientSecretPolicy(0, 5, 0, 0, 0, 0, 6));
         MockMvcUtils.setZoneConfiguration(webApplicationContext, result.getIdentityZone().getId(), result.getIdentityZone().getConfig());
 
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://sample.redirect");
         client.setClientSecret("secret");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isBadRequest());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void in_zone_client_write_failure_with_secret_requires_uppercase_character() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_failure_with_secret_requires_uppercase_character(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
         result.getIdentityZone().getConfig().setClientSecretPolicy(new ClientSecretPolicy(0, 255, 1, 0, 0, 0, 6));
         MockMvcUtils.setZoneConfiguration(webApplicationContext, result.getIdentityZone().getId(), result.getIdentityZone().getConfig());
 
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://sample.redirect");
         client.setClientSecret("secret");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isBadRequest());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void in_zone_client_write_failure_with_secret_requires_lowercase_character() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_failure_with_secret_requires_lowercase_character(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
         result.getIdentityZone().getConfig().setClientSecretPolicy(new ClientSecretPolicy(0, 255, 0, 1, 0, 0, 6));
         MockMvcUtils.setZoneConfiguration(webApplicationContext, result.getIdentityZone().getId(), result.getIdentityZone().getConfig());
 
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://sample.redirect");
         client.setClientSecret("SECRET");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isBadRequest());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void in_zone_client_write_success_with_complex_secret_policy() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_success_with_complex_secret_policy(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
         result.getIdentityZone().getConfig().setClientSecretPolicy(new ClientSecretPolicy(6, 255, 1, 1, 1, 1, 6));
         MockMvcUtils.setZoneConfiguration(webApplicationContext, result.getIdentityZone().getId(), result.getIdentityZone().getConfig());
 
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://sample.redirect");
         client.setClientSecret("Secret1@");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isCreated());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isCreated());
     }
 
-    @Test
-    void in_zone_client_write_failure_with_secret_requires_special_character() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_failure_with_secret_requires_special_character(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
         result.getIdentityZone().getConfig().setClientSecretPolicy(new ClientSecretPolicy(0, 255, 0, 0, 0, 1, 6));
         MockMvcUtils.setZoneConfiguration(webApplicationContext, result.getIdentityZone().getId(), result.getIdentityZone().getConfig());
 
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://sample.redirect");
         client.setClientSecret("secret");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isBadRequest());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void in_zone_client_write_failure_with_secret_requires_digit() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_failure_with_secret_requires_digit(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
         result.getIdentityZone().getConfig().setClientSecretPolicy(new ClientSecretPolicy(0, 255, 0, 0, 1, 0, 6));
         MockMvcUtils.setZoneConfiguration(webApplicationContext, result.getIdentityZone().getId(), result.getIdentityZone().getConfig());
 
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://sample.redirect");
         client.setClientSecret("secret");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isBadRequest());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isBadRequest());
     }
 
-    @Test
-    void in_zone_client_write_using_zones_dot_admin() throws Exception {
-        String subdomain = generator.generate();
-        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void in_zone_client_write_using_zones_dot_admin(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClientForOAuthClients(), IdentityZoneHolder.getCurrentZoneId());
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
         String clientId = generator.generate();
         UaaClientDetails client = new UaaClientDetails(clientId, "", "openid", GRANT_TYPE_AUTHORIZATION_CODE, "", "http://some.redirect.url.com");
         client.setClientSecret("secret");
-        MockMvcUtils.createClient(mockMvc, result.getZoneAdminToken(), client, result.getIdentityZone(), status().isCreated());
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON)
+                        .contentType(APPLICATION_JSON)
+                        .content(JsonUtils.writeValueAsString(client)))
+                .andExpect(status().isCreated());
+    }
+
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void get_oauth_clients_list_within_zone(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        UaaClientDetails zoneAdminClient = new UaaClientDetails("zone-admin", "", "clients.read", "client_credentials", "clients.read,clients.write", "http://redirect.url");
+        zoneAdminClient.setClientSecret("zone-admin-secret");
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClient, IdentityZoneHolder.getCurrentZoneId());
+
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/clients")
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk());
+    }
+
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void create_and_get_oauth_client_within_zone(ZoneResolutionMode mode) throws Exception {
+        String subdomain = generator.generate().toLowerCase();
+        UaaClientDetails zoneAdminClient = new UaaClientDetails("zone-admin", "", "clients.read,openid", "client_credentials", "clients.read,clients.write,openid", "http://redirect.url");
+        zoneAdminClient.setClientSecret("zone-admin-secret");
+        MockMvcUtils.IdentityZoneCreationResult result = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, zoneAdminClient, IdentityZoneHolder.getCurrentZoneId());
+
+        String zoneToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "zone-admin", "zone-admin-secret", null, subdomain, false);
+
+        String clientId = generator.generate();
+        ClientDetailsCreation createPayload = new ClientDetailsCreation();
+        createPayload.setClientId(clientId);
+        createPayload.setClientSecret("secret");
+        createPayload.setScope(Collections.singleton("openid"));
+        createPayload.setAuthorizedGrantTypes(Collections.singleton(GRANT_TYPE_AUTHORIZATION_CODE));
+        createPayload.setRegisteredRedirectUri(Collections.singleton("http://some.redirect.url.com"));
+
+        MockHttpServletRequestBuilder createRequest = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/oauth/clients")
+                .header("Authorization", "Bearer " + zoneToken)
+                .accept(APPLICATION_JSON)
+                .contentType(APPLICATION_JSON)
+                .content(JsonUtils.writeValueAsString(createPayload));
+        mockMvc.perform(createRequest).andExpect(status().isCreated());
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/clients/" + clientId)
+                        .header("Authorization", "Bearer " + zoneToken)
+                        .accept(APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(clientId)));
     }
 
     @Test

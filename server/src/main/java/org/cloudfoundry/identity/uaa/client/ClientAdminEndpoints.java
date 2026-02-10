@@ -193,7 +193,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return errorCounts;
     }
 
-    @GetMapping("/oauth/clients/{client}")
+    @GetMapping({"/oauth/clients/{client}", "/z/{subdomain}/oauth/clients/{client}"})
     @ResponseBody
     public ClientDetails getClientDetails(@PathVariable String client) {
         try {
@@ -207,7 +207,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         }
     }
 
-    @PostMapping({"/oauth/clients", "/oauth/clients/"})
+    @PostMapping({"/oauth/clients", "/oauth/clients/", "/z/{subdomain}/oauth/clients", "/z/{subdomain}/oauth/clients/"})
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
     @Transactional
@@ -227,7 +227,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return removeSecret(clientDetailsService.create(details, identityZoneManager.getCurrentIdentityZoneId()));
     }
 
-    @GetMapping("/oauth/clients/restricted")
+    @GetMapping({"/oauth/clients/restricted", "/z/{subdomain}/oauth/clients/restricted"})
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public List<String> getRestrictedClientScopes() {
@@ -235,7 +235,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
     }
 
 
-    @PostMapping({"/oauth/clients/restricted", "/oauth/clients/restricted/"})
+    @PostMapping({"/oauth/clients/restricted", "/oauth/clients/restricted/", "/z/{subdomain}/oauth/clients/restricted", "/z/{subdomain}/oauth/clients/restricted/"})
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
     public ClientDetails createRestrictedClientDetails(@RequestBody UaaClientDetails client) {
@@ -243,7 +243,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return createClientDetailsInternal(client);
     }
 
-    @PostMapping({"/oauth/clients/tx", "/oauth/clients/tx/"})
+    @PostMapping({"/oauth/clients/tx", "/oauth/clients/tx/", "/z/{subdomain}/oauth/clients/tx", "/z/{subdomain}/oauth/clients/tx/"})
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
     @Transactional
@@ -266,7 +266,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return details;
     }
 
-    @PutMapping({"/oauth/clients/tx", "/oauth/clients/tx/"})
+    @PutMapping({"/oauth/clients/tx", "/oauth/clients/tx/", "/z/{subdomain}/oauth/clients/tx", "/z/{subdomain}/oauth/clients/tx/"})
     @ResponseStatus(HttpStatus.OK)
     @Transactional
     @ResponseBody
@@ -299,7 +299,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
 
     }
 
-    @PutMapping("/oauth/clients/restricted/{client}")
+    @PutMapping({"/oauth/clients/restricted/{client}", "/z/{subdomain}/oauth/clients/restricted/{client}"})
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public ClientDetails updateRestrictedClientDetails(@RequestBody UaaClientDetails client,
@@ -308,7 +308,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return updateClientDetails(client, clientId);
     }
 
-    @PutMapping("/oauth/clients/{client}")
+    @PutMapping({"/oauth/clients/{client}", "/z/{subdomain}/oauth/clients/{client}"})
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public ClientDetails updateClientDetails(@RequestBody UaaClientDetails client,
@@ -332,7 +332,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return removeSecret(clientDetailsService.retrieve(clientId, identityZoneManager.getCurrentIdentityZoneId()));
     }
 
-    @DeleteMapping("/oauth/clients/{client}")
+    @DeleteMapping({"/oauth/clients/{client}", "/z/{subdomain}/oauth/clients/{client}"})
     @ResponseStatus(HttpStatus.OK)
     @ResponseBody
     public ClientDetails removeClientDetails(@PathVariable String client) {
@@ -341,7 +341,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return removeSecret(details);
     }
 
-    @PostMapping({"/oauth/clients/tx/delete", "/oauth/clients/tx/delete/"})
+    @PostMapping({"/oauth/clients/tx/delete", "/oauth/clients/tx/delete/", "/z/{subdomain}/oauth/clients/tx/delete", "/z/{subdomain}/oauth/clients/tx/delete/"})
     @ResponseStatus(HttpStatus.OK)
     @Transactional
     @ResponseBody
@@ -353,7 +353,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return doProcessDeletes(result);
     }
 
-    @PostMapping({"/oauth/clients/tx/modify", "/oauth/clients/tx/modify/"})
+    @PostMapping({"/oauth/clients/tx/modify", "/oauth/clients/tx/modify/", "/z/{subdomain}/oauth/clients/tx/modify", "/z/{subdomain}/oauth/clients/tx/modify/"})
     @ResponseStatus(HttpStatus.OK)
     @Transactional
     @ResponseBody
@@ -407,7 +407,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
     }
 
 
-    @PostMapping({"/oauth/clients/tx/secret", "/oauth/clients/tx/secret/"})
+    @PostMapping({"/oauth/clients/tx/secret", "/oauth/clients/tx/secret/", "/z/{subdomain}/oauth/clients/tx/secret", "/z/{subdomain}/oauth/clients/tx/secret/"})
     @ResponseStatus(HttpStatus.OK)
     @Transactional
     @ResponseBody
@@ -450,7 +450,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         approvalStore.revokeApprovalsForClient(clientId, identityZoneManager.getCurrentIdentityZoneId());
     }
 
-    @GetMapping({"/oauth/clients", "/oauth/clients/"})
+    @GetMapping({"/oauth/clients", "/oauth/clients/", "/z/{subdomain}/oauth/clients", "/z/{subdomain}/oauth/clients/"})
     @ResponseBody
     public SearchResults<?> listClientDetails(
             @RequestParam(value = "attributes", required = false) String attributesCommaSeparated,
@@ -497,7 +497,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         }
     }
 
-    @PutMapping("/oauth/clients/{client_id}/secret")
+    @PutMapping({"/oauth/clients/{client_id}/secret", "/z/{subdomain}/oauth/clients/{client_id}/secret"})
     @ResponseBody
     public ActionResult changeSecret(@PathVariable String client_id, @RequestBody SecretChangeRequest change) {
 
@@ -544,7 +544,7 @@ public class ClientAdminEndpoints implements ApplicationEventPublisherAware {
         return result;
     }
 
-    @PutMapping(value = "/oauth/clients/{client_id}/clientjwt")
+    @PutMapping(value = {"/oauth/clients/{client_id}/clientjwt", "/z/{subdomain}/oauth/clients/{client_id}/clientjwt"})
     @ResponseBody
     public ActionResult changeClientJwt(@PathVariable String client_id, @RequestBody ClientJwtChangeRequest change) {
 
