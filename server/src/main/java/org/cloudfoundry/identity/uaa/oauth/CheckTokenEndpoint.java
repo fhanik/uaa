@@ -80,7 +80,7 @@ public class CheckTokenEndpoint implements InitializingBean {
         Assert.notNull(resourceServerTokenServices, "tokenServices must be set");
     }
 
-    @PostMapping("/check_token")
+    @PostMapping({"/check_token", "/z/{subdomain}/check_token"})
     @ResponseBody
     @Deprecated
     public Claims checkToken(@RequestParam(name = "token", required = false, defaultValue = "") String value,
@@ -139,7 +139,7 @@ public class CheckTokenEndpoint implements InitializingBean {
         return request.getAttribute(PARAMETER_PARSE_FAILED_ATTR) == null;
     }
 
-    @RequestMapping(value = "/check_token")
+    @RequestMapping(value = {"/check_token", "/z/{subdomain}/check_token"})
     @ResponseBody
     @Deprecated
     public Claims checkToken(HttpServletRequest request) throws HttpRequestMethodNotSupportedException {

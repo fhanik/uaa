@@ -50,7 +50,7 @@ public class TokenIntrospectionSecurityConfiguration {
     @Order(FilterChainOrder.RESOURCE)
     UaaFilterChain checkTokenSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/check_token")
+                .securityMatcher("/check_token", "/z/*/check_token")
                 .authorizeHttpRequests( auth -> {
                     auth.requestMatchers("/**").hasAuthority("uaa.resource");
                     auth.anyRequest().denyAll();
@@ -99,7 +99,7 @@ public class TokenIntrospectionSecurityConfiguration {
     @Order(FilterChainOrder.RESOURCE)
     UaaFilterChain introspectSecurity(HttpSecurity http) throws Exception {
         SecurityFilterChain chain = http
-                .securityMatcher("/introspect")
+                .securityMatcher("/introspect", "/z/*/introspect")
                 .authorizeHttpRequests( auth -> {
                     auth.requestMatchers("/**").hasAuthority("uaa.resource");
                     auth.anyRequest().denyAll();

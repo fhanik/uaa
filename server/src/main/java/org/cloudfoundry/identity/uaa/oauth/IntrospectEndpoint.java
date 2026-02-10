@@ -28,7 +28,7 @@ public class IntrospectEndpoint {
         this.resourceServerTokenServices = resourceServerTokenServices;
     }
 
-    @PostMapping("/introspect")
+    @PostMapping({"/introspect", "/z/{subdomain}/introspect"})
     @ResponseBody
     public IntrospectionClaims introspect(@RequestParam String token) {
         IntrospectionClaims introspectionClaims = new IntrospectionClaims();
@@ -50,7 +50,7 @@ public class IntrospectEndpoint {
         return introspectionClaims;
     }
 
-    @RequestMapping(value = "/introspect")
+    @RequestMapping(value = {"/introspect", "/z/{subdomain}/introspect"})
     @ResponseBody
     public IntrospectionClaims methodNotSupported(HttpServletRequest request) throws HttpRequestMethodNotSupportedException {
         throw new HttpRequestMethodNotSupportedException(request.getMethod());
