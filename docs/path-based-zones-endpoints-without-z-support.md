@@ -19,7 +19,7 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 6.  ✅ [Home and error pages (UI)](#6-home-and-error-pages-ui)
 7.  ✅ [Session (UI)](#7-session-ui)
 8.  ✅ [Invitations (UI + API)](#8-invitations-ui--api)
-9.  ❌ [Profile (UI)](#9-profile-ui)
+9.  ✅ [Profile (UI)](#9-profile-ui)
 10. ❌ [Passcode (API / UI)](#10-passcode-api--ui)
 11. ❌ [OAuth / token / client admin (API)](#11-oauth--token--client-admin-api-not-yet-covered-by-z)
 12. ❌ [Authenticate (API)](#12-authenticate-api)

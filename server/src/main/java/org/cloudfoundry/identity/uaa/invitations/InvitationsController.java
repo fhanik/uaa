@@ -308,10 +308,11 @@ public class InvitationsController {
         try {
             String newCode = expiringCodeStore.generateCode(expiringCode.getData(), new Timestamp(System.currentTimeMillis() + (10 * 60 * 1000)), expiringCode.getIntent(), identityZoneManager.getCurrentIdentityZoneId()).getCode();
 
+            // Add in order so RedirectView produces accept?error_message_code=...&code=... (pattern expected by tests)
             model.addAttribute(errorCode, error);
             model.addAttribute("code", newCode);
-            String redirectTarget = (pathPrefix != null && !pathPrefix.isEmpty()) ? pathPrefix + "/invitations/accept" : "accept";
-            return "redirect:" + redirectTarget;
+            String baseTarget = (pathPrefix != null && !pathPrefix.isEmpty()) ? pathPrefix + "/invitations/accept" : "accept";
+            return "redirect:" + baseTarget;
         } catch (EmptyResultDataAccessException noProviderFound) {
             log.debug("No available invitation providers for email:%s, id:%s".formatted(codeData.get(EMAIL), codeData.get("user_id")));
             model.addAttribute("pathPrefix", pathPrefix);

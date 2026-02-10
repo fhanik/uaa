@@ -14,9 +14,9 @@
             <span sec:authentication="name">user@example.com</span>
             <i class="fa fa-chevron-down"></i>
         </button>
-        <ul class="dropdown-content" id="nav-dropdown-content">
-            <li><a href="/profile" id="nav-dropdown-content-profile" th:href="${pathPrefix != null && !#strings.isEmpty(pathPrefix) ? pathPrefix + '/profile' : '/profile'}">Account Settings</a></li>
-            <li><a href="/logout.do" id="nav-dropdown-content-logout" th:href="${pathPrefix != null && !#strings.isEmpty(pathPrefix) ? pathPrefix + '/logout.do' : '/logout.do'}">Sign Out</a></li>
+        <ul class="dropdown-content" id="nav-dropdown-content" th:with="defaultProfileUrl=@{/profile}, defaultLogoutUrl=@{/logout.do}">
+            <li><a href="/profile" id="nav-dropdown-content-profile" th:href="${pathPrefix != null && !#strings.isEmpty(pathPrefix) ? pathPrefix + '/profile' : defaultProfileUrl}">Account Settings</a></li>
+            <li><a href="/logout.do" id="nav-dropdown-content-logout" th:href="${pathPrefix != null && !#strings.isEmpty(pathPrefix) ? pathPrefix + '/logout.do' : defaultLogoutUrl}">Sign Out</a></li>
         </ul>
     </div>
 </th:block>

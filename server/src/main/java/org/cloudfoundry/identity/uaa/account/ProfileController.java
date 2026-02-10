@@ -57,7 +57,7 @@ public class ProfileController {
     /**
      * Display the current user's approvals
      */
-    @GetMapping("/profile")
+    @GetMapping({"/profile", "/z/{subdomain}/profile"})
     public String get(Authentication authentication, Model model) {
         Map<String, List<DescribedApproval>> approvals = getCurrentApprovalsForUser(getCurrentUserId());
         Map<String, String> clientNames = getClientNames(approvals);
@@ -70,7 +70,7 @@ public class ProfileController {
     /**
      * Handle form post for revoking chosen approvals
      */
-    @PostMapping({"/profile", "/profile/"})
+    @PostMapping({"/profile", "/profile/", "/z/{subdomain}/profile", "/z/{subdomain}/profile/"})
     public String post(@RequestParam(required = false) Collection<String> checkedScopes,
             @RequestParam(required = false) String update,
             @RequestParam(required = false) String delete,
