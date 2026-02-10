@@ -71,7 +71,7 @@ public class AccessController {
         this.groupProvisioning = groupProvisioning;
     }
 
-    @RequestMapping("/oauth/confirm_access")
+    @RequestMapping({"/oauth/confirm_access", "/z/{subdomain}/oauth/confirm_access"})
     public String confirm(Map<String, Object> model, final HttpServletRequest request, Principal principal,
             SessionStatus sessionStatus) {
 
@@ -244,7 +244,7 @@ public class AccessController {
         return result;
     }
 
-    @RequestMapping("/oauth/error")
+    @RequestMapping({"/oauth/error", "/z/{subdomain}/oauth/error"})
     public String handleError(WebRequest request, Map<String, Object> model) {
         // There is already an error entry in the model
         Object object = request.getAttribute("error", RequestAttributes.SCOPE_REQUEST);

@@ -29,7 +29,7 @@ public class WhitelabelApprovalEndpoint {
     private static final String CSRF = "_csrf";
     private static final String SCOPES = "scopes";
 
-    @GetMapping(value = "/oauth/confirm_access")
+    @GetMapping(value = {"/oauth/confirm_access", "/z/{subdomain}/oauth/confirm_access"})
     public ModelAndView getAccessConfirmation(Map<String, Object> model, HttpServletRequest request) {
         final String approvalContent = createTemplate(model, request);
         if (request.getAttribute(CSRF) != null) {

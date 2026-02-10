@@ -3,16 +3,22 @@ package org.cloudfoundry.identity.uaa.oauth;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.scim.ScimUser;
 import org.cloudfoundry.identity.uaa.test.ZoneSeeder;
 import org.cloudfoundry.identity.uaa.test.ZoneSeederExtension;
 import org.cloudfoundry.identity.uaa.user.UaaAuthority;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpMethod;
 import org.springframework.mock.web.MockHttpSession;
 import org.cloudfoundry.identity.uaa.oauth.common.exceptions.RedirectMismatchException;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -234,5 +240,34 @@ class UaaAuthorizationEndpointMockMvcTest {
                 .param(SCOPE, "openid")
                 .param(REDIRECT_URI, redirectUri)
                 .session(session);
+    }
+
+    @Nested
+    @DefaultTestContext
+    class ConfirmAccessAndErrorZonePathSupport {
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void confirm_access_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
+            String subdomain = "zone" + System.nanoTime();
+            UaaClientDetails client = new UaaClientDetails("client-id", "", "openid", "authorization_code", "", "http://redirect");
+            client.setClientSecret("secret");
+            MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, client, IdentityZoneHolder.getCurrentZoneId());
+
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/confirm_access"))
+                    .andExpect(status().is3xxRedirection());
+        }
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void oauth_error_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
+            String subdomain = "zone" + System.nanoTime();
+            UaaClientDetails client = new UaaClientDetails("client-id", "", "openid", "authorization_code", "", "http://redirect");
+            client.setClientSecret("secret");
+            MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, client, IdentityZoneHolder.getCurrentZoneId());
+
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/error"))
+                    .andExpect(status().is3xxRedirection());
+        }
     }
 }

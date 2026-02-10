@@ -144,8 +144,8 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 
 | Endpoint(s)                              | Controller / Class | Controller has /z/? | Security has /z/*/? | Tests that touch these endpoints |
 |------------------------------------------|--------------------|---------------------|----------------------|-----------------------------------|
-| `/oauth/confirm_access`                  | AccessController | No | No | — |
-| `/oauth/error`                           | AccessController | No | No | — |
+| ✅ `/oauth/confirm_access`               | AccessController | No | No | — |
+| ✅ `/oauth/error`                        | AccessController | No | No | — |
 | `/oauth/token/revoke/user/{userId}` etc. | TokenRevocationEndpoint | No | No (OauthEndpointSecurityConfiguration /oauth/token/revoke/** has no /z/) | — |
 | ✅ `/check_token`                        | CheckTokenEndpoint | No | No | — |
 | ✅ `/introspect`                         | IntrospectEndpoint | No | No | — |
