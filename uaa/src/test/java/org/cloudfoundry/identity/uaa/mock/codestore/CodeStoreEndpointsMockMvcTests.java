@@ -1,23 +1,30 @@
 package org.cloudfoundry.identity.uaa.mock.codestore;
 
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.codestore.ExpiringCode;
 import org.cloudfoundry.identity.uaa.codestore.JdbcExpiringCodeStore;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.web.context.WebApplicationContext;
 
 import java.sql.Timestamp;
 
@@ -40,6 +47,9 @@ class CodeStoreEndpointsMockMvcTests {
     private MockMvc mockMvc;
     private JdbcTemplate jdbcTemplate;
     private JdbcExpiringCodeStore jdbcExpiringCodeStore;
+
+    @Autowired
+    private WebApplicationContext webApplicationContext;
 
     @BeforeEach
     void setUp(@Autowired JdbcTemplate jdbcTemplate,
@@ -322,6 +332,30 @@ class CodeStoreEndpointsMockMvcTests {
                     .andReturn();
 
             assertThat(jdbcTemplate.queryForObject("select count(*) from expiring_code_store", Integer.class)).isEqualTo(2);
+        }
+    }
+
+    @Nested
+    @DefaultTestContext
+    class CodesZonePathSupport {
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void codes_endpoint_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
+            String subdomain = "codeszone" + System.nanoTime();
+            UaaClientDetails loginClient = new UaaClientDetails("login", "", "oauth.login", "client_credentials", "", "http://redirect");
+            loginClient.setClientSecret("loginsecret");
+            MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, loginClient, IdentityZoneHolder.getCurrentZoneId());
+
+            Timestamp ts = new Timestamp(System.currentTimeMillis() + 60000);
+            ExpiringCode code = new ExpiringCode(null, ts, "{}", null);
+            String requestBody = JsonUtils.writeValueAsString(code);
+
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/Codes")
+                            .contentType(APPLICATION_JSON)
+                            .accept(MediaType.APPLICATION_JSON)
+                            .content(requestBody))
+                    .andExpect(status().isUnauthorized());
         }
     }
 

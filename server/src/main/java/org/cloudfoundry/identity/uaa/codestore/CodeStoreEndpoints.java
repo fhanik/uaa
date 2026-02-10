@@ -29,7 +29,7 @@ public class CodeStoreEndpoints {
         this.identityZoneManager = identityZoneManager;
     }
 
-    @PostMapping({"/Codes", "/Codes/"})
+    @PostMapping({"/Codes", "/Codes/", "/z/{subdomain}/Codes", "/z/{subdomain}/Codes/"})
     @ResponseStatus(HttpStatus.CREATED)
     @ResponseBody
     public ExpiringCode generateCode(@RequestBody ExpiringCode expiringCode) {
@@ -44,7 +44,7 @@ public class CodeStoreEndpoints {
         }
     }
 
-    @GetMapping("/Codes/{code}")
+    @GetMapping({"/Codes/{code}", "/z/{subdomain}/Codes/{code}"})
     @ResponseBody
     public ExpiringCode retrieveCode(@PathVariable String code) {
         ExpiringCode result;

@@ -29,11 +29,12 @@ class CodeStoreSecurityConfiguration {
             @Qualifier("resourceAgnosticAuthenticationFilter") FilterRegistrationBean<OAuth2AuthenticationProcessingFilter> oauth2ResourceFilter
     ) throws Exception {
         var originalFilterChain = http
-                .securityMatcher("/Codes/**")
+                .securityMatcher("/Codes/**", "/z/*/Codes/**")
                 .authorizeHttpRequests(authorize -> {
                     authorize.anyRequest().access(
                             anyOf()
                                     .isUaaAdmin()
+                                    .isZoneAdmin()
                                     .hasScope("oauth.login")
                     );
                 })
