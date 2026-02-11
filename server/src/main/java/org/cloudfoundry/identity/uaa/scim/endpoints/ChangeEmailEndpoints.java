@@ -54,7 +54,7 @@ public class ChangeEmailEndpoints implements ApplicationEventPublisherAware {
         this.identityZoneManager = identityZoneManager;
     }
 
-    @PostMapping("/email_verifications")
+    @PostMapping({"/email_verifications", "/z/{subdomain}/email_verifications"})
     public ResponseEntity<String> generateEmailVerificationCode(@RequestBody EmailChange emailChange) {
         final String userId = emailChange.getUserId();
         final String email = emailChange.getEmail();
@@ -75,7 +75,7 @@ public class ChangeEmailEndpoints implements ApplicationEventPublisherAware {
         }
     }
 
-    @PostMapping("/email_changes")
+    @PostMapping({"/email_changes", "/z/{subdomain}/email_changes"})
     public ResponseEntity<EmailChangeResponse> changeEmail(@RequestBody String code) {
         ExpiringCode expiringCode = expiringCodeStore.retrieveCode(code, identityZoneManager.getCurrentIdentityZoneId());
         if ((null != expiringCode) && ((null == expiringCode.getIntent()) || EMAIL.name().equals(expiringCode.getIntent()))) {

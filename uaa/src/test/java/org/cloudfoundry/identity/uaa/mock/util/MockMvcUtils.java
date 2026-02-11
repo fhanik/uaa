@@ -1171,7 +1171,7 @@ public final class MockMvcUtils {
                 .param("grant_type", "client_credentials")
                 .param("client_id", clientId)
                 .param("revocable", "true");
-        if (!hasText(scope)) {
+        if (hasText(scope)) {
             oauthTokenPost.param("scope", scope);
         }
         if (opaque) {

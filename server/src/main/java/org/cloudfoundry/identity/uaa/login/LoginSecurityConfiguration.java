@@ -312,8 +312,8 @@ class LoginSecurityConfiguration {
         var emptyAuthenticationManager = new ProviderManager(new AuthenticationManagerBeanDefinitionParser.NullAuthenticationProvider());
 
         var originalFilterChain = http
-                .securityMatcher("/email_*")
-                .authorizeHttpRequests(auth -> auth.requestMatchers("/email_*").access(
+                .securityMatcher("/email_*", "/z/*/email_*")
+                .authorizeHttpRequests(auth -> auth.requestMatchers("/email_*", "/z/*/email_*").access(
                         anyOf()
                                 .hasScope("oauth.login")
                                 .throwOnMissingScope()
