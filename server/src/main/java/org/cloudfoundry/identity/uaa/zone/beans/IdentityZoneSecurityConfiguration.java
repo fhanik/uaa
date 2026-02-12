@@ -44,10 +44,10 @@ class IdentityZoneSecurityConfiguration {
         oauth2ResourceFilter.setAuthenticationEntryPoint(oauthAuthenticationEntryPoint);
 
         var originalFilterChain = http
-                .securityMatcher("/identity-zones/**", "/identity-providers/**")
+                .securityMatcher("/identity-zones/**", "/identity-providers/**", "/z/*/identity-zones/**", "/z/*/identity-providers/**")
                 .authenticationManager(emptyAuthenticationManager)
                 .authorizeHttpRequests(auth -> {
-                    auth.requestMatchers(HttpMethod.GET, "/identity-zones").access(
+                    auth.requestMatchers(HttpMethod.GET, "/identity-zones", "/z/*/identity-zones").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .isZoneAdmin()
@@ -55,20 +55,20 @@ class IdentityZoneSecurityConfiguration {
                                     .hasScope("zones.write")
                                     .throwOnMissingScope()
                     );
-                    auth.requestMatchers(HttpMethod.POST, "/identity-zones/*/clients").access(
+                    auth.requestMatchers(HttpMethod.POST, "/identity-zones/*/clients", "/z/*/identity-zones/*/clients").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .hasScopeWithZoneId("zones.write")
                                     .throwOnMissingScope()
                     );
-                    auth.requestMatchers(HttpMethod.DELETE, "/identity-zones/*/clients/*").access(
+                    auth.requestMatchers(HttpMethod.DELETE, "/identity-zones/*/clients/*", "/z/*/identity-zones/*/clients/*").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .hasScopeWithZoneId("zones.write")
                                     .throwOnMissingScope()
                     );
 
-                    auth.requestMatchers(HttpMethod.GET, "/identity-zones/*").access(
+                    auth.requestMatchers(HttpMethod.GET, "/identity-zones/*", "/z/*/identity-zones/*").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .isZoneAdmin()
@@ -78,14 +78,14 @@ class IdentityZoneSecurityConfiguration {
                                     .throwOnMissingScope()
                     );
 
-                    auth.requestMatchers(HttpMethod.POST, "/identity-zones/**").access(
+                    auth.requestMatchers(HttpMethod.POST, "/identity-zones/**", "/z/*/identity-zones/**").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .isZoneAdmin()
                                     .hasScopeWithZoneId("zones.write")
                                     .throwOnMissingScope()
                     );
-                    auth.requestMatchers(HttpMethod.DELETE, "/identity-zones/**").access(
+                    auth.requestMatchers(HttpMethod.DELETE, "/identity-zones/**", "/z/*/identity-zones/**").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .isZoneAdmin()
@@ -93,7 +93,7 @@ class IdentityZoneSecurityConfiguration {
                                     .throwOnMissingScope()
                     );
 
-                    auth.requestMatchers(HttpMethod.PUT, "/identity-zones/**").access(
+                    auth.requestMatchers(HttpMethod.PUT, "/identity-zones/**", "/z/*/identity-zones/**").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .isZoneAdmin()
@@ -102,7 +102,7 @@ class IdentityZoneSecurityConfiguration {
                                     .throwOnMissingScope()
                     );
 
-                    auth.requestMatchers(HttpMethod.GET, "/identity-providers/**").access(
+                    auth.requestMatchers(HttpMethod.GET, "/identity-providers/**", "/z/*/identity-providers/**").access(
                             anyOf()
                                     .isUaaAdmin()
                                     .isZoneAdmin()
@@ -115,13 +115,13 @@ class IdentityZoneSecurityConfiguration {
                             .isZoneAdmin()
                             .hasScope("idps.write")
                             .throwOnMissingScope();
-                    auth.requestMatchers(HttpMethod.POST, "/identity-providers/**").access(canWriteIdp);
-                    auth.requestMatchers(HttpMethod.PUT, "/identity-providers/**").access(canWriteIdp);
-                    auth.requestMatchers(HttpMethod.PATCH, "/identity-providers/**").access(canWriteIdp);
-                    auth.requestMatchers(HttpMethod.DELETE, "/identity-providers/**").access(canWriteIdp);
+                    auth.requestMatchers(HttpMethod.POST, "/identity-providers/**", "/z/*/identity-providers/**").access(canWriteIdp);
+                    auth.requestMatchers(HttpMethod.PUT, "/identity-providers/**", "/z/*/identity-providers/**").access(canWriteIdp);
+                    auth.requestMatchers(HttpMethod.PATCH, "/identity-providers/**", "/z/*/identity-providers/**").access(canWriteIdp);
+                    auth.requestMatchers(HttpMethod.DELETE, "/identity-providers/**", "/z/*/identity-providers/**").access(canWriteIdp);
 
-                    auth.requestMatchers("/identity-providers/**").denyAll();
-                    auth.requestMatchers("/identity-zones/**").denyAll();
+                    auth.requestMatchers("/identity-providers/**", "/z/*/identity-providers/**").denyAll();
+                    auth.requestMatchers("/identity-zones/**", "/z/*/identity-zones/**").denyAll();
                 })
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(oauth2ResourceFilter, AbstractPreAuthenticatedProcessingFilter.class)

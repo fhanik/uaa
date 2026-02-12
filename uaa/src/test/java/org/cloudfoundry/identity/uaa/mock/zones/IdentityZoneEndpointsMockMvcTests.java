@@ -59,8 +59,10 @@ import org.cloudfoundry.identity.uaa.zone.ZoneManagementScopes;
 import org.cloudfoundry.identity.uaa.zone.event.IdentityZoneModifiedEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -2425,5 +2427,54 @@ class IdentityZoneEndpointsMockMvcTests {
         JsonNode root = JsonUtils.readTree(mvcResult.getResponse().getContentAsString());
         return JsonUtils.readValue(root.get("resources").toString(), new TypeReference<List<ScimUser>>() {
         });
+    }
+
+    @Nested
+    @DefaultTestContext
+    class IdentityZonesZonePathSupport {
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void get_identity_zones_list_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
+            String subdomain = generator.generate().toLowerCase();
+            IdentityZoneCreationResult creationResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+            String zoneId = creationResult.getIdentityZone().getId();
+            String token = creationResult.getZoneAdminToken();
+
+            if (mode == ZoneResolutionMode.ZONE_PATH) {
+                MockHttpServletRequestBuilder request = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/identity-zones")
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_JSON_VALUE);
+                mockMvc.perform(request).andExpect(status().isUnauthorized());
+            } else {
+                mockMvc.perform(get("/identity-zones")
+                                .header("Authorization", "Bearer " + token)
+                                .header(IdentityZoneSwitchingFilter.HEADER, zoneId)
+                                .accept(MediaType.APPLICATION_JSON_VALUE))
+                        .andExpect(status().isOk());
+            }
+        }
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void get_identity_zone_by_id_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
+            String subdomain = generator.generate().toLowerCase();
+            IdentityZoneCreationResult creationResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
+            String zoneId = creationResult.getIdentityZone().getId();
+            String token = creationResult.getZoneAdminToken();
+
+            if (mode == ZoneResolutionMode.ZONE_PATH) {
+                MockHttpServletRequestBuilder request = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/identity-zones/" + zoneId)
+                        .header("Authorization", "Bearer " + token)
+                        .accept(MediaType.APPLICATION_JSON_VALUE);
+                mockMvc.perform(request).andExpect(status().isUnauthorized());
+            } else {
+                mockMvc.perform(get("/identity-zones/{id}", zoneId)
+                                .header("Authorization", "Bearer " + token)
+                                .header(IdentityZoneSwitchingFilter.HEADER, zoneId)
+                                .accept(MediaType.APPLICATION_JSON_VALUE))
+                        .andExpect(status().isOk());
+            }
+        }
     }
 }

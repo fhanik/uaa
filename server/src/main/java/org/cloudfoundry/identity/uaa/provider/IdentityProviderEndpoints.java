@@ -75,7 +75,7 @@ import static org.springframework.http.HttpStatus.OK;
 import static org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY;
 import static org.springframework.util.StringUtils.hasText;
 
-@RequestMapping("/identity-providers")
+@RequestMapping({"/identity-providers", "/z/{subdomain}/identity-providers"})
 @RestController
 public class IdentityProviderEndpoints implements ApplicationEventPublisherAware {
 

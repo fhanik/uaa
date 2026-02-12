@@ -150,8 +150,8 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 | ✅ `/check_token`                          | CheckTokenEndpoint | No | No | — |
 | ✅ `/introspect`                           | IntrospectEndpoint | No | No | — |
 | ✅ `/oauth/clients/**`                     | ClientAdminEndpoints, ClientMetadataAdminEndpoints | No | No (ClientAdminSecurityConfiguration has no /z/) | — |
-| `/identity-providers/**`                   | IdentityProviderEndpoints | No | No (IdentityZoneSecurityConfiguration has no /z/) | — |
-| `/identity-zones/**`                       | — | No | No | IdentityZoneEndpointsMockMvcTests (already parameterized for zone path in tests) |
+| ✅ `/identity-providers/**`                | IdentityProviderEndpoints | No | No (IdentityZoneSecurityConfiguration has no /z/) | — |
+| ✅ `/identity-zones/**`                    | — | No | No | IdentityZoneEndpointsMockMvcTests (already parameterized for zone path in tests) |
 | ✅ `/Codes/**`                             | CodeStoreEndpoints | No | No | — |
 | ✅ `/email_verifications`, `/email_changes`| ChangeEmailEndpoints (SCIM) | No | No | — |
 | ✅ `/RateLimitingStatus/**`                | RateLimitStatusController | No | No | — |
