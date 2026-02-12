@@ -2,6 +2,7 @@ package org.cloudfoundry.identity.uaa.ratelimiting.core.config;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import org.apache.commons.lang3.StringUtils;
 import org.cloudfoundry.identity.uaa.ratelimiting.core.config.exception.RateLimitingConfigException;
@@ -58,11 +59,12 @@ public final class PathSelector {
         if (type == null) {
             error(offsetIndex, name, "type", typeStr, selectorStr, "must match one of: " + PathMatchType.options());
         }
-        String error = type.pathUnacceptable(path);
-        if (error != null) {
-            error(offsetIndex, name, "path", path, selectorStr, error);
+        PathMatchType resolvedType = Objects.requireNonNull(type);
+        String pathError = resolvedType.pathUnacceptable(path);
+        if (pathError != null) {
+            error(offsetIndex, name, "path", path, selectorStr, pathError);
         }
-        return new PathSelector( type, path );
+        return new PathSelector(resolvedType, path);
     }
 
     private static void error(int offsetIndex, String name, String whatField, String fieldValue, String selectorStr, String suffix) {

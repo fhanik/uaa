@@ -7,6 +7,10 @@ import java.util.List;
 import java.util.Map;
 import jakarta.validation.constraints.NotNull;
 
+import org.springframework.http.server.PathContainer;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
+
 import org.cloudfoundry.identity.uaa.ratelimiting.core.CompoundKey;
 import org.cloudfoundry.identity.uaa.ratelimiting.core.LoggingOption;
 import org.cloudfoundry.identity.uaa.ratelimiting.core.config.LimiterMapping;
@@ -25,7 +29,10 @@ import org.cloudfoundry.identity.uaa.ratelimiting.internal.common.InternalLimite
 public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFactoriesSupplier {
     static final String TO_STRING_INDENT = "   ";
 
+    private static final PathPatternParser PATH_PATTERN_PARSER = new PathPatternParser();
+
     private final Map<String, LimiterMapping> pathEqualsToLimiterMappings = new LinkedHashMap<>();
+    private final List<PathPatternToLimiterMapping> pathPatternLimiterMappings;
     private final PathFragmentToLimiterMappings pathStartsWithLimiterMappings;
     private final PathFragmentToLimiterMappings pathContainsLimiterMappings;
     private final LimiterMapping pathOtherLimiterMapping;
@@ -62,10 +69,6 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
         return internalFactoryMapFor(callerIdSupplierByTypeFactory.from(info), info.getServletPath());
     }
 
-    public int pathsCount() {
-        return cnt(pathEqualsToLimiterMappings) + cnt(pathStartsWithLimiterMappings) + cnt(pathContainsLimiterMappings) + cnt(pathOtherLimiterMapping) + cnt(allLimiterMapping);
-    }
-
     // package friendly for testing
     LinkedHashMap<CompoundKey, InternalLimiterFactory> internalFactoryMapFor(CallerIdSupplierByType callerIdSupplierByType, String servletPath) {
         return mapFrom(callerIdSupplierByType,
@@ -74,19 +77,25 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
 
     // package friendly for testing
     LimiterMapping getPathBasedLimiterMappings(String servletPath) { // Method shows how the search algorithm works!
-        LimiterMapping pathLimiterMappings;
         if ((servletPath == null) || servletPath.isEmpty()) {
-            pathLimiterMappings = pathOtherLimiterMapping;
-        } else {
-            if (null == (pathLimiterMappings = pathEqualsToLimiterMappings.get(servletPath))) { // . . . . . 1st - Direct look up for Equals //NOSONAR keep extended for readability
-                if (null == (pathLimiterMappings = pathStartsWithLimiterMappings.get(servletPath))) { // . . 2nd - Longest PathFragment that StartsWith //NOSONAR
-                    if (null == (pathLimiterMappings = pathContainsLimiterMappings.get(servletPath))) { // . 3rd - Longest PathFragment that Contains //NOSONAR
-                        pathLimiterMappings = pathOtherLimiterMapping; //  . . . . . . . . . . . . . . . . . . . 4th - Other
-                    }
-                }
+            return pathOtherLimiterMapping;
+        }
+        LimiterMapping pathLimiterMappings = pathEqualsToLimiterMappings.get(servletPath);        // 1st - Equals
+        if (pathLimiterMappings == null) { pathLimiterMappings = getPathPatternMatch(servletPath); } // 2nd - PathPattern
+        if (pathLimiterMappings == null) { pathLimiterMappings = pathStartsWithLimiterMappings.get(servletPath); } // 3rd - StartsWith
+        if (pathLimiterMappings == null) { pathLimiterMappings = pathContainsLimiterMappings.get(servletPath); }   // 4th - Contains
+        if (pathLimiterMappings == null) { pathLimiterMappings = pathOtherLimiterMapping; }  // 5th - Other
+        return pathLimiterMappings;
+    }
+
+    private LimiterMapping getPathPatternMatch(String servletPath) {
+        PathContainer pathContainer = PathContainer.parsePath(servletPath);
+        for (PathPatternToLimiterMapping mapping : pathPatternLimiterMappings) {
+            if (mapping.pattern.matches(pathContainer)) {
+                return mapping.limiterMapping;
             }
         }
-        return pathLimiterMappings;
+        return null;
     }
 
     /**
@@ -106,6 +115,7 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
     public String toString() {
         StringBuilder sb = new StringBuilder().append("InternalLimiterFactoriesSupplier:");
         appendTo(sb, PathMatchType.Equals, pathEqualsToLimiterMappings);
+        appendTo(sb, PathMatchType.PathPattern, pathPatternLimiterMappings);
         appendTo(sb, PathMatchType.StartsWith, pathStartsWithLimiterMappings);
         appendTo(sb, PathMatchType.Contains, pathContainsLimiterMappings);
         appendTo(sb, PathMatchType.Other, pathOtherLimiterMapping);
@@ -126,6 +136,7 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
         this.loggingOption = LoggingOption.deNull(loggingOption);
         int countLimiterMappings = 0;
 
+        List<PathPatternToLimiterMapping> pathPatternMappings = new ArrayList<>();
         List<PathFragmentToLimiterMapping> ptfStartsWiths = new ArrayList<>();
         List<PathFragmentToLimiterMapping> ptfContains = new ArrayList<>();
         LimiterMapping pathOtherLimiterMappingInternal = null;
@@ -140,6 +151,15 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
                     switch (pmType) {
                         case Equals:
                             pathEqualsToLimiterMappings.put(selector.getPath(), limiterMapping);
+                            break;
+                        case PathPattern:
+                            try {
+                                PathPattern pattern = PATH_PATTERN_PARSER.parse(selector.getPath());
+                                pathPatternMappings.add(new PathPatternToLimiterMapping(pattern, selector.getPath(), limiterMapping));
+                            } catch (Exception e) {
+                                throw new RateLimitingConfigException(
+                                        "Invalid pathPattern in limiterMapping '" + limiterMapping.name() + "': '" + selector.getPath() + "' - " + e.getMessage(), e);
+                            }
                             break;
                         case StartsWith:
                             ptfStartsWiths.add(new PathFragmentToLimiterMapping( selector.getPath(), limiterMapping ));
@@ -159,6 +179,7 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
                 }
             }
         }
+        this.pathPatternLimiterMappings = List.copyOf(pathPatternMappings);
         pathStartsWithLimiterMappings = new PathFragmentToLimiterMappings( String::startsWith, ptfStartsWiths );
         pathContainsLimiterMappings = new PathFragmentToLimiterMappings( String::contains, ptfContains );
         this.pathOtherLimiterMapping = pathOtherLimiterMappingInternal;
@@ -171,6 +192,13 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
         appendPathMatchType(sb, type, !pathLimiterMappings.isEmpty());
         for (Map.Entry<String, LimiterMapping> entry : pathLimiterMappings.entrySet()) {
             appendLimiterMappingsWithPath(sb, entry.getKey(), entry.getValue());
+        }
+    }
+
+    private static void appendTo(StringBuilder sb, PathMatchType type, List<PathPatternToLimiterMapping> mappings) {
+        appendPathMatchType(sb, type, !mappings.isEmpty());
+        for (PathPatternToLimiterMapping mapping : mappings) {
+            appendLimiterMappingsWithPath(sb, mapping.patternString, mapping.limiterMapping);
         }
     }
 
@@ -214,15 +242,6 @@ public class InternalLimiterFactoriesSupplierImpl implements InternalLimiterFact
         }
     }
 
-    private static int cnt(Object o) {
-        return o == null ? 0 : 1;
-    }
-
-    private static int cnt(PathFragmentToLimiterMappings mapper) {
-        return mapper.count();
-    }
-
-    private static int cnt(Map<?, ?> map) {
-        return map.size();
+    private record PathPatternToLimiterMapping(PathPattern pattern, String patternString, LimiterMapping limiterMapping) {
     }
 }

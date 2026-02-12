@@ -153,8 +153,8 @@ This document lists endpoints that do **not** yet have a dual path mapping for `
 | `/identity-providers/**`                   | IdentityProviderEndpoints | No | No (IdentityZoneSecurityConfiguration has no /z/) | — |
 | `/identity-zones/**`                       | — | No | No | IdentityZoneEndpointsMockMvcTests (already parameterized for zone path in tests) |
 | ✅ `/Codes/**`                             | CodeStoreEndpoints | No | No | — |
-| ✅ `/email_verifications`, `/email_changes`   | ChangeEmailEndpoints (SCIM) | No | No | — |
-| `/RateLimitingStatus/**`                   | RateLimitStatusController | No | No | — |
+| ✅ `/email_verifications`, `/email_changes`| ChangeEmailEndpoints (SCIM) | No | No | — |
+| ✅ `/RateLimitingStatus/**`                | RateLimitStatusController | No | No | — |
 | ✅ `/saml/metadata`, `/saml/metadata/`     | SamlMetadataEndpoint | No | No (secFilterOpenSamlEndPoints has no /z/) | — |
 
 ---

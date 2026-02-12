@@ -112,27 +112,34 @@ ratelimit:
       withCallerRemoteAddressID: 50r/s
       pathSelectors:
         - "equals:/oauth/token"
+        - "pathPattern:/z/{subdomain}/oauth/token"
     - name: AuthAuthorize
       withCallerRemoteAddressID: 50r/s
       pathSelectors:
         - "equals:/oauth/authorize"
+        - "pathPattern:/z/{subdomain}/oauth/authorize"
     - name: LoginPage
       withCallerRemoteAddressID: 50r/1s
       pathSelectors:
         - "equals:/login"
+        - "pathPattern:/z/{subdomain}/login"
     - name: LoginDo
       withCallerRemoteAddressID: 50r/s
       pathSelectors:
         - "equals:/login.do"
+        - "pathPattern:/z/{subdomain}/login.do"
     - name: InfoLimit
       withCallerRemoteAddressID: 20r/s
       pathSelectors:
         - "equals:/info"
+        - "pathPattern:/z/{subdomain}/info"
     - name: SCIM
       withCallerCredentialsID: 500r/s
       pathSelectors:
         - "startsWith:/Users"
         - "startsWith:/Groups"
+        - "pathPattern:/z/{subdomain}/Users/**"
+        - "pathPattern:/z/{subdomain}/Groups/**"
     - name: EverythingElse
       global: 200r/s
       pathSelectors:

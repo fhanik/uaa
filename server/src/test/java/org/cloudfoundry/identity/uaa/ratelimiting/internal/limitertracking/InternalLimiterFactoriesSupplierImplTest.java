@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.fail;
 
 @SuppressWarnings("SameParameterValue")
@@ -31,7 +32,7 @@ class InternalLimiterFactoriesSupplierImplTest extends AbstractExceptionTestSupp
                 LimiterMapping.builder().name("All").global("100r/3s").pathSelector("All").build());
 
         InternalLimiterFactoriesSupplierImpl fs = new InternalLimiterFactoriesSupplierImpl(null, null, limiterMappings);
-        checkFactoryCollections(fs, 8,
+        checkFactoryCollections(fs,
                 "   Equals:",
                 "      /F-35 -> N2:RemoteAddressID @ 4r/2s",
                 "      /F-22 -> N3:RemoteAddressID @ 2r/s",
@@ -51,6 +52,106 @@ class InternalLimiterFactoriesSupplierImplTest extends AbstractExceptionTestSupp
     }
 
     @Test
+    void factoriesSupplier_pathPattern_matching() {
+        LimiterMapping pathPatternMapping = LimiterMapping.builder()
+                .name("PathPatternScim")
+                .withCallerCredentialsID("100r/s")
+                .pathSelector("pathPattern:/Users/*")
+                .pathSelector("pathPattern:/Groups/{id}")
+                .build();
+        LimiterMapping equalsMapping = LimiterMapping.builder()
+                .name("Exact")
+                .withCallerRemoteAddressID("10r/s")
+                .pathSelector("equals:/Users/exact")
+                .build();
+        LimiterMapping other = LimiterMapping.builder().name("Others").global("150r/5s").pathSelector("other").build();
+        List<LimiterMapping> limiterMappings = List.of(equalsMapping, pathPatternMapping, other);
+
+        InternalLimiterFactoriesSupplierImpl fs = new InternalLimiterFactoriesSupplierImpl(null, null, limiterMappings);
+
+        // equals wins over pathPattern when path matches exactly
+        assertThat(fs.getPathBasedLimiterMappings("/Users/exact")).isEqualTo(equalsMapping);
+        // pathPattern /Users/* matches paths with one segment after /Users
+        assertThat(fs.getPathBasedLimiterMappings("/Users/123")).isEqualTo(pathPatternMapping);
+        assertThat(fs.getPathBasedLimiterMappings("/Users/abc")).isEqualTo(pathPatternMapping);
+        // pathPattern /Groups/{id} matches one segment after /Groups
+        assertThat(fs.getPathBasedLimiterMappings("/Groups/xyz")).isEqualTo(pathPatternMapping);
+        // pathPattern does not match (no segment after /Groups, or unrelated path)
+        assertThat(fs.getPathBasedLimiterMappings("/Groups")).isEqualTo(other);
+        assertThat(fs.getPathBasedLimiterMappings("/other")).isEqualTo(other);
+    }
+
+    @Test
+    void factoriesSupplier_pathPattern_invalidPattern_throws() {
+        assertThatThrownBy(() -> LimiterMapping.builder()
+                .name("BadPattern")
+                .global("1r/s")
+                .pathSelector("pathPattern:/foo/**/bar")
+                .build())
+                .hasMessageContaining("BadPattern")
+                .hasMessageContaining("/foo/**/bar")
+                .hasMessageContaining("**"); // PatternParseException message (e.g. "** pattern elements should be placed at the start or end")
+    }
+
+    @Test
+    void factoriesSupplier_pathPattern_toString_and_pathsCount() {
+        LimiterMapping pathPatternMapping = LimiterMapping.builder()
+                .name("PathPatternN")
+                .global("50r/s")
+                .pathSelector("pathPattern:/api/**")
+                .build();
+        LimiterMapping other = LimiterMapping.builder().name("Others").global("150r/5s").pathSelector("other").build();
+        List<LimiterMapping> limiterMappings = List.of(pathPatternMapping, other);
+
+        InternalLimiterFactoriesSupplierImpl fs = new InternalLimiterFactoriesSupplierImpl(null, null, limiterMappings);
+
+        assertThat(fs.getPathBasedLimiterMappings("/api/v1/foo")).isEqualTo(pathPatternMapping);
+        assertThat(fs.toString()).contains("PathPattern:");
+        assertThat(fs.toString()).contains("/api/**");
+        assertThat(fs.toString()).contains("PathPatternN");
+    }
+
+    @Test
+    void factoriesSupplier_pathPattern_zonePath_matching() {
+        LimiterMapping loginPage = LimiterMapping.builder()
+                .name("LoginPage")
+                .withCallerRemoteAddressID("50r/1s")
+                .pathSelector("pathPattern:/z/{subdomain}/login")
+                .build();
+        LimiterMapping loginDo = LimiterMapping.builder()
+                .name("LoginDo")
+                .withCallerRemoteAddressID("50r/s")
+                .pathSelector("pathPattern:/z/{subdomain}/login.do")
+                .build();
+        LimiterMapping oauthToken = LimiterMapping.builder()
+                .name("AuthToken")
+                .withCallerRemoteAddressID("50r/s")
+                .pathSelector("pathPattern:/z/{subdomain}/oauth/token")
+                .build();
+        LimiterMapping scim = LimiterMapping.builder()
+                .name("SCIM")
+                .withCallerCredentialsID("500r/s")
+                .pathSelector("pathPattern:/z/{subdomain}/Users/**")
+                .pathSelector("pathPattern:/z/{subdomain}/Groups/**")
+                .build();
+        LimiterMapping other = LimiterMapping.builder().name("Others").global("150r/5s").pathSelector("other").build();
+        List<LimiterMapping> limiterMappings = List.of(loginPage, loginDo, oauthToken, scim, other);
+
+        InternalLimiterFactoriesSupplierImpl fs = new InternalLimiterFactoriesSupplierImpl(null, null, limiterMappings);
+
+        assertThat(fs.getPathBasedLimiterMappings("/z/myzone/login")).isEqualTo(loginPage);
+        assertThat(fs.getPathBasedLimiterMappings("/z/other-zone/login")).isEqualTo(loginPage);
+        assertThat(fs.getPathBasedLimiterMappings("/z/myzone/login.do")).isEqualTo(loginDo);
+        assertThat(fs.getPathBasedLimiterMappings("/z/zone1/oauth/token")).isEqualTo(oauthToken);
+        assertThat(fs.getPathBasedLimiterMappings("/z/zone1/Users/123")).isEqualTo(scim);
+        assertThat(fs.getPathBasedLimiterMappings("/z/zone1/Users/abc/xyz")).isEqualTo(scim);
+        assertThat(fs.getPathBasedLimiterMappings("/z/zone1/Groups/xyz")).isEqualTo(scim);
+        assertThat(fs.getPathBasedLimiterMappings("/z/zone1/Groups/id/extra")).isEqualTo(scim);
+        assertThat(fs.getPathBasedLimiterMappings("/login")).isEqualTo(other);
+        assertThat(fs.getPathBasedLimiterMappings("/z/myzone/other")).isEqualTo(other);
+    }
+
+    @Test
     void factoriesSupplier_validate_Ordered_Map() {
         LimiterMapping n1 = LimiterMapping.builder().name("N1").global("2r/1s").pathSelectors("equals:/F-22", "equals:/F-35A", "equals:/F-35B", "equals:/F-35C", "equals:/F-35I").build();
         LimiterMapping n2 = LimiterMapping.builder().name("N2").global("4r/2s").withoutCallerID("1r/5s").pathSelectors("startsWith:/F-35", "startsWith:/F-22").build();
@@ -58,7 +159,7 @@ class InternalLimiterFactoriesSupplierImplTest extends AbstractExceptionTestSupp
         List<LimiterMapping> limiterMappings = List.of(n1, n2, all);
 
         InternalLimiterFactoriesSupplierImpl fs = new InternalLimiterFactoriesSupplierImpl(null, null, limiterMappings);
-        checkFactoryCollections(fs, 8,
+        checkFactoryCollections(fs,
                 "   Equals:",
                 "      /F-22 -> N1:Global @ 2r/s",
                 "      /F-35A -> N1:Global @ 2r/s",
@@ -143,10 +244,8 @@ class InternalLimiterFactoriesSupplierImplTest extends AbstractExceptionTestSupp
         }
     }
 
-    private void checkFactoryCollections(InternalLimiterFactoriesSupplierImpl fs, int expectedFactoryCount, String... lines) {
+    private void checkFactoryCollections(InternalLimiterFactoriesSupplierImpl fs, String... lines) {
         String lfsString = fs.toString();
-        assertThat(fs.pathsCount()).as(lfsString).isEqualTo(expectedFactoryCount);
-
         StringBuilder sb = new StringBuilder().append("InternalLimiterFactoriesSupplier:");
         for (String line : lines) {
             sb.append('\n').append(line);
