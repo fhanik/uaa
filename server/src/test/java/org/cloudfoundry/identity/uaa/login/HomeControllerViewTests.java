@@ -360,6 +360,11 @@ class HomeControllerViewTests extends TestClassNullifier {
         }
 
         @Override
+        public void addInterceptors(org.springframework.web.servlet.config.annotation.InterceptorRegistry registry) {
+            registry.addInterceptor(new org.cloudfoundry.identity.uaa.web.NavModelInterceptor());
+        }
+
+        @Override
         public void configureDefaultServletHandling(DefaultServletHandlerConfigurer configurer) {
             configurer.enable();
         }
