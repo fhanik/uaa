@@ -33,6 +33,7 @@ import org.cloudfoundry.identity.uaa.user.UaaAuthority;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
+import org.cloudfoundry.identity.uaa.web.UaaSavedRequestCache;
 import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -2798,7 +2799,7 @@ public class LoginMockMvcZonePathTests {
 
         // For ZONE_PATH mode, the zone prefix is in the path, so we don't use a context path
         String loginPath = mode == ZoneResolutionMode.ZONE_PATH ? "/login.do" : "/uaa/login.do";
-        String expectedRedirect = mode == ZoneResolutionMode.ZONE_PATH ? "/" : "/uaa/";
+        String expectedRedirect = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/" : "/uaa/";
         MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, loginPath)
                 .with(cookieCsrf())
                 .session(session)
@@ -2924,6 +2925,83 @@ public class LoginMockMvcZonePathTests {
             mockMvc.perform(
                             get("/login?success=foobar&success=verify_success"))
                     .andExpect(content().string(containsString("Success!")));
+        }
+    }
+
+    /**
+     * login.do flow: success redirect, failure redirect, and saved-request redirect.
+     * SUBDOMAIN should pass; ZONE_PATH may fail until success/failure handlers are zone-path aware.
+     */
+    @Nested
+    @DefaultTestContext
+    class LoginDoFlowZonePath {
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void login_do_success_redirects_to_default_target_with_zone_path(ZoneResolutionMode mode) throws Exception {
+            String subdomain = generator.generate().toLowerCase();
+            IdentityZone zone = createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
+            ScimUser user = createUser(scimUserProvisioning, generator, zone.getId());
+
+            MockHttpSession session = new MockHttpSession();
+            MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/uaa", "/login.do")
+                    .contextPath("/uaa")
+                    .session(session)
+                    .with(cookieCsrf())
+                    .param("username", user.getUserName())
+                    .param("password", user.getPassword());
+            String expectedRedirect = mode == ZoneResolutionMode.ZONE_PATH
+                    ? "/uaa/z/" + subdomain + "/"
+                    : "/uaa/";
+            mockMvc.perform(post)
+                    .andExpect(status().isFound())
+                    .andExpect(redirectedUrl(expectedRedirect));
+        }
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void login_do_failure_redirects_to_login_with_zone_path(ZoneResolutionMode mode) throws Exception {
+            String subdomain = generator.generate().toLowerCase();
+            createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
+
+            MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/uaa", "/login.do")
+                    .contextPath("/uaa")
+                    .with(cookieCsrf())
+                    .param("username", "nobody")
+                    .param("password", "wrong");
+            String expectedRedirect = mode == ZoneResolutionMode.ZONE_PATH
+                    ? "/uaa/z/" + subdomain + "/login?error=login_failure"
+                    : "/uaa/login?error=login_failure";
+            mockMvc.perform(post)
+                    .andExpect(status().isFound())
+                    .andExpect(redirectedUrl(expectedRedirect))
+                    .andExpect(emptyCurrentUserCookie(mode));
+        }
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void login_do_success_redirects_to_saved_request(ZoneResolutionMode mode) throws Exception {
+            String subdomain = generator.generate().toLowerCase();
+            IdentityZone zone = createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
+            ScimUser user = createUser(scimUserProvisioning, generator, zone.getId());
+
+            String savedRedirectUrl = mode == ZoneResolutionMode.ZONE_PATH
+                    ? "http://localhost/uaa/z/" + subdomain + "/oauth/authorize?client_id=admin&response_type=code"
+                    : "http://" + subdomain + ".localhost/oauth/authorize?client_id=admin&response_type=code";
+            MockHttpSession session = new MockHttpSession();
+            MockHttpServletRequest savedReq = new MockHttpServletRequest("GET", "/oauth/authorize");
+            savedReq.setServerName(mode == ZoneResolutionMode.ZONE_PATH ? "localhost" : subdomain + ".localhost");
+            SessionUtils.setSavedRequestSession(session, new UaaSavedRequestCache.ClientRedirectSavedRequest(savedReq, savedRedirectUrl));
+
+            MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/uaa", "/login.do")
+                    .contextPath("/uaa")
+                    .session(session)
+                    .with(cookieCsrf())
+                    .param("username", user.getUserName())
+                    .param("password", user.getPassword());
+            mockMvc.perform(post)
+                    .andExpect(status().isFound())
+                    .andExpect(redirectedUrl(savedRedirectUrl));
         }
     }
 

@@ -74,6 +74,11 @@ public class UaaSavedRequestAwareAuthenticationSuccessHandler extends SavedReque
         } else if (UaaUrlUtils.uriHasMatchingHost(redirectFormParam, request.getServerName())) {
             return redirectFormParam;
         } else {
+            String zonePathPrefix = UaaUrlUtils.getZonePathPrefix(request);
+            if (UaaStringUtils.hasText(zonePathPrefix)) {
+                // Return path relative to context so RedirectStrategy can prepend context path once
+                return zonePathPrefix + "/";
+            }
             return super.determineTargetUrl(request, response);
         }
     }

@@ -137,8 +137,7 @@ class ForcePasswordChangeControllerZoneResolutionMockMvcTest {
                     .param(CookieBasedCsrfTokenRepository.DEFAULT_CSRF_COOKIE_NAME, "csrf1");
             mockMvc.perform(loginPost)
                     .andExpect(status().isFound())
-                    // Login success redirect is / for both modes (ZONE_PATH success URL not yet zone-path aware)
-                    .andExpect(redirectedUrl("/"));
+                    .andExpect(redirectedUrl(mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/" : "/"));
 
             assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
             assertThat(SessionUtils.isPasswordChangeRequired(session)).isTrue();
@@ -278,7 +277,7 @@ class ForcePasswordChangeControllerZoneResolutionMockMvcTest {
                     .param(CookieBasedCsrfTokenRepository.DEFAULT_CSRF_COOKIE_NAME, "csrf1");
             mockMvc.perform(loginPost)
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("/"));
+                    .andExpect(redirectedUrl(mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/" : "/"));
 
             mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/").session(session))
                     .andExpect(status().isFound())

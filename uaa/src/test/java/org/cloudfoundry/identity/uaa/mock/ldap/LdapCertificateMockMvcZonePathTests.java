@@ -106,13 +106,15 @@ class LdapCertificateMockMvcZonePathTests {
     @ParameterizedTest
     @EnumSource(ZoneResolutionMode.class)
     void trusted_server_certificate(ZoneResolutionMode mode) throws Exception {
-        mockMvc.perform(mode.createRequestBuilder(trustedCertZone.getIdentityZone().getSubdomain(), HttpMethod.POST, "/login.do")
+        String subdomain = trustedCertZone.getIdentityZone().getSubdomain();
+        String expectedRedirect = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/" : "/";
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/login.do")
                 .accept(TEXT_HTML_VALUE)
                 .with(cookieCsrf())
                 .param("username", "marissa2")
                 .param("password", LDAP))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("/"))
+                .andExpect(redirectedUrl(expectedRedirect))
                 .andExpect(authenticated());
     }
 
