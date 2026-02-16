@@ -317,6 +317,31 @@ class ProfileControllerMockMvcZonePathTests {
         Mockito.verify(approvalStore, Mockito.times(1)).revokeApprovalsForClientAndUser("app", USER_ID, currentIdentityZoneId);
     }
 
+    /**
+     * Approvals page (profile) must render zone-aware links for change_email, change_password, and form action for profile.
+     * Passes for SUBDOMAIN; will pass for ZONE_PATH once approvals.html and ProfileController are zone path aware.
+     */
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void approvalsPageContainsZoneAwareChangeEmailChangePasswordAndProfileLinks(ZoneResolutionMode mode) throws Exception {
+        String subdomain = subdomainFor(mode);
+        String expectedChangeEmailHref = mode == ZoneResolutionMode.ZONE_PATH
+                ? "href=\"/z/" + ZONE_PATH_SUBDOMAIN + "/change_email\"" : "href=\"/change_email\"";
+        String expectedChangePasswordHref = mode == ZoneResolutionMode.ZONE_PATH
+                ? "href=\"/z/" + ZONE_PATH_SUBDOMAIN + "/change_password\"" : "href=\"/change_password\"";
+        String expectedProfileAction = mode == ZoneResolutionMode.ZONE_PATH
+                ? "action=\"/z/" + ZONE_PATH_SUBDOMAIN + "/profile\"" : "action=\"/profile\"";
+
+        UaaPrincipal uaaPrincipal = new UaaPrincipal(USER_ID, "username", "email@example.com", OriginKeys.UAA, null, currentIdentityZoneId);
+        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(uaaPrincipal, null);
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/profile").principal(authentication))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(expectedChangeEmailHref)))
+                .andExpect(content().string(containsString(expectedChangePasswordHref)))
+                .andExpect(content().string(containsString(expectedProfileAction)));
+    }
+
     private static void getProfile(final MockMvc mockMvc, final ZoneResolutionMode mode, final String subdomain, final String name, final String currentIdentityZoneId) throws Exception {
         UaaPrincipal uaaPrincipal = new UaaPrincipal("fake-user-id", "username", "email@example.com", OriginKeys.UAA, null, currentIdentityZoneId);
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(uaaPrincipal, null);

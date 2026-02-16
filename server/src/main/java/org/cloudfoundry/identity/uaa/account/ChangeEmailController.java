@@ -5,6 +5,7 @@ import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationDetails;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.error.UaaException;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
 import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
 import org.springframework.http.HttpStatus;
@@ -42,11 +43,15 @@ public class ChangeEmailController {
 
     @GetMapping({"/change_email", "/z/{subdomain}/change_email"})
     public String changeEmailPage(Model model, @RequestParam(value = "client_id", required = false) String clientId,
-            @RequestParam(value = "redirect_uri", required = false) String redirectUri) {
+            @RequestParam(value = "redirect_uri", required = false) String redirectUri,
+            HttpServletRequest request) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
         model.addAttribute("email", ((UaaPrincipal) securityContext.getAuthentication().getPrincipal()).getEmail());
         model.addAttribute("client_id", clientId);
         model.addAttribute("redirect_uri", redirectUri);
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("formAction", pathPrefix + "/change_email.do");
         return "change_email";
     }
 
@@ -54,10 +59,11 @@ public class ChangeEmailController {
     public String changeEmail(Model model, @Valid @ModelAttribute ValidEmail newEmail, BindingResult result,
             @RequestParam(required = false, value = "client_id") String clientId,
             @RequestParam(required = false, value = "redirect_uri") String redirectUri,
-            RedirectAttributes redirectAttributes, HttpServletResponse response) {
+            RedirectAttributes redirectAttributes, HttpServletRequest request, HttpServletResponse response) {
         SecurityContext securityContext = SecurityContextHolder.getContext();
 
         if (result.hasErrors()) {
+            addFormActionToModel(model, request);
             model.addAttribute("error_message_code", "invalid_email");
             model.addAttribute("email", ((UaaPrincipal) securityContext.getAuthentication().getPrincipal()).getEmail());
             response.setStatus(HttpStatus.UNPROCESSABLE_ENTITY.value());
@@ -76,6 +82,7 @@ public class ChangeEmailController {
             changeEmailService.beginEmailChange(userId, userEmail, newEmail.getNewEmail(), clientId, redirectUri);
         } catch (UaaException e) {
             if (e.getHttpStatus() == 409) {
+                addFormActionToModel(model, request);
                 model.addAttribute("error_message_code", "username_exists");
                 model.addAttribute("email", ((UaaPrincipal) securityContext.getAuthentication().getPrincipal()).getEmail());
                 response.setStatus(HttpStatus.UNPROCESSABLE_ENTITY.value());
@@ -84,6 +91,12 @@ public class ChangeEmailController {
         }
 
         return "redirect:email_sent?code=email_change";
+    }
+
+    private void addFormActionToModel(Model model, HttpServletRequest request) {
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("formAction", pathPrefix + "/change_email.do");
     }
 
     @GetMapping({"/verify_email", "/z/{subdomain}/verify_email"})

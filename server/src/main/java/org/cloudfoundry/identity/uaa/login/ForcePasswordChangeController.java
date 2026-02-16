@@ -34,9 +34,12 @@ public class ForcePasswordChangeController {
     private final IdentityZoneManager identityZoneManager;
 
     @GetMapping({"/force_password_change", "/force_password_change/", "/z/{subdomain}/force_password_change", "/z/{subdomain}/force_password_change/"})
-    public String forcePasswordChangePage(Model model) {
+    public String forcePasswordChangePage(Model model, HttpServletRequest request) {
         String email = ((UaaAuthentication) SecurityContextHolder.getContext().getAuthentication()).getPrincipal().getEmail();
         model.addAttribute("email", email);
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("formAction", pathPrefix + "/force_password_change");
         return "force_password_change";
     }
 
@@ -54,13 +57,13 @@ public class ForcePasswordChangeController {
         PasswordConfirmationValidation validation =
                 new PasswordConfirmationValidation(email, password, passwordConfirmation);
         if (!validation.valid()) {
-            return handleUnprocessableEntity(model, response, email, resourcePropertySource.getProperty("force_password_change.form_error").toString());
+            return handleUnprocessableEntity(model, request, response, email, resourcePropertySource.getProperty("force_password_change.form_error").toString());
         }
         log.debug("Processing handleForcePasswordChange for user: {}", email);
         try {
             resetPasswordService.resetUserPassword(principal.getId(), password);
         } catch (InvalidPasswordException exception) {
-            return handleUnprocessableEntity(model, response, email, exception.getMessagesAsOneString());
+            return handleUnprocessableEntity(model, request, response, email, exception.getMessagesAsOneString());
         }
         log.debug("Successful password change for username:{} in zone:{}", principal.getName(), identityZoneManager.getCurrentIdentityZone());
         SessionUtils.setPasswordChangeRequired(httpSession, false);
@@ -70,9 +73,12 @@ public class ForcePasswordChangeController {
         return pathPrefix.isEmpty() ? "redirect:/force_password_change_completed" : "redirect:" + pathPrefix + "/force_password_change_completed";
     }
 
-    private String handleUnprocessableEntity(Model model, HttpServletResponse response, String email, String message) {
+    private String handleUnprocessableEntity(Model model, HttpServletRequest request, HttpServletResponse response, String email, String message) {
         model.addAttribute("message", message);
         model.addAttribute("email", email);
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("formAction", pathPrefix + "/force_password_change");
         response.setStatus(HttpStatus.UNPROCESSABLE_ENTITY.value());
         return "force_password_change";
     }

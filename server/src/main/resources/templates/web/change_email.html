@@ -12,7 +12,7 @@
     <h1>Change Email</h1>
     <div class="island-content">
         <div th:text="|Current Email Address: ${email}|" class="email-display">Current Email Address: user@example.com</div>
-        <form th:action="@{/change_email.do}" method="post" novalidate="novalidate">
+        <form th:action="${formAction}" method="post" novalidate="novalidate">
             <div th:if="${error_message_code}" class="alert alert-error">
                 <p th:text="#{'email_change.' + ${error_message_code}}">Error Message</p>
             </div>

@@ -49,6 +49,8 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.hamcrest.Matchers.containsString;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -161,6 +163,42 @@ class ForcePasswordChangeControllerZoneResolutionMockMvcTest {
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl(expectedRedirectBase(mode, subdomain) + "/"));
             assertThat(SessionUtils.isPasswordChangeRequired(session)).isFalse();
+        }
+
+        /**
+         * force_password_change page must render form action zone-aware.
+         * Passes for SUBDOMAIN; will pass for ZONE_PATH once template/controller are zone path aware.
+         */
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void force_password_change_page_contains_zone_aware_form_action(ZoneResolutionMode mode) throws Exception {
+            setupZoneAndUser(mode);
+            UserAccountStatus userAccountStatus = new UserAccountStatus();
+            userAccountStatus.setPasswordChangeRequired(true);
+            String jsonStatus = JsonUtils.writeValueAsString(userAccountStatus);
+            mockMvc.perform(
+                            mode.createRequestBuilder(subdomain, HttpMethod.PATCH, "/Users/" + user.getId() + "/status")
+                                    .header("Authorization", "Bearer " + token)
+                                    .accept(APPLICATION_JSON)
+                                    .contentType(APPLICATION_JSON)
+                                    .content(jsonStatus))
+                    .andExpect(status().isOk());
+
+            MockHttpSession session = new MockHttpSession();
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/login.do")
+                            .param("username", user.getUserName())
+                            .param("password", "secret")
+                            .session(session)
+                            .with(cookieCsrf())
+                            .param(CookieBasedCsrfTokenRepository.DEFAULT_CSRF_COOKIE_NAME, "csrf1"))
+                    .andExpect(status().isFound());
+
+            String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH
+                    ? "action=\"/z/" + subdomain + "/force_password_change\"" : "action=\"/force_password_change\"";
+
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/force_password_change").session(session))
+                    .andExpect(status().isOk())
+                    .andExpect(content().string(containsString(expectedFormAction)));
         }
     }
 

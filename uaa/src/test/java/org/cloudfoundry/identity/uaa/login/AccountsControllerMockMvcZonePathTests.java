@@ -147,6 +147,71 @@ class AccountsControllerMockMvcZonePathTests {
                 .andExpect(content().string(containsString("Cloud Foundry")));
     }
 
+    /**
+     * accounts/email_sent page must render "Resend activation email" link zone-aware.
+     * Passes for SUBDOMAIN; will pass for ZONE_PATH once template/controller are zone path aware.
+     */
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void accounts_email_sent_page_contains_zone_aware_create_account_link(ZoneResolutionMode mode) throws Exception {
+        String subdomain = mode == ZoneResolutionMode.ZONE_PATH ? generator.generate() : "";
+        if (mode == ZoneResolutionMode.ZONE_PATH) {
+            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
+        }
+        String expectedCreateAccountHref = mode == ZoneResolutionMode.ZONE_PATH
+                ? "href=\"/z/" + subdomain + "/create_account\"" : "href=\"/create_account\"";
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/accounts/email_sent"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(expectedCreateAccountHref)));
+    }
+
+    /**
+     * create_account page must render form action and "Already joined? Sign in" link zone-aware.
+     * Passes for SUBDOMAIN; will pass for ZONE_PATH once template/controller are zone path aware.
+     */
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void create_account_page_contains_zone_aware_form_action_and_login_link(ZoneResolutionMode mode) throws Exception {
+        String subdomain = mode == ZoneResolutionMode.ZONE_PATH ? generator.generate() : "";
+        if (mode == ZoneResolutionMode.ZONE_PATH) {
+            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
+        }
+        String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH
+                ? "action=\"/z/" + subdomain + "/create_account.do\"" : "action=\"/create_account.do\"";
+        String expectedLoginHref = mode == ZoneResolutionMode.ZONE_PATH
+                ? "href=\"/z/" + subdomain + "/login\"" : "href=\"/login\"";
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/create_account"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(expectedFormAction)))
+                .andExpect(content().string(containsString(expectedLoginHref)));
+    }
+
+    /**
+     * link_prompt page (expired activation) must render create_account and login links zone-aware.
+     * Passes for SUBDOMAIN; will pass for ZONE_PATH once template/controller are zone path aware.
+     */
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void link_prompt_page_contains_zone_aware_create_account_and_login_links(ZoneResolutionMode mode) throws Exception {
+        String subdomain = mode == ZoneResolutionMode.ZONE_PATH ? generator.generate() : "";
+        if (mode == ZoneResolutionMode.ZONE_PATH) {
+            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
+        }
+        String expectedCreateAccountHref = mode == ZoneResolutionMode.ZONE_PATH
+                ? "href=\"/z/" + subdomain + "/create_account\"" : "href=\"/create_account\"";
+        String expectedLoginHref = mode == ZoneResolutionMode.ZONE_PATH
+                ? "href=\"/z/" + subdomain + "/login\"" : "href=\"/login\"";
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/verify_user")
+                        .param("code", "expired-code"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(view().name("accounts/link_prompt"))
+                .andExpect(content().string(containsString(expectedCreateAccountHref)))
+                .andExpect(content().string(containsString(expectedLoginHref)));
+    }
+
     @Test
     void pageTitle() throws Exception {
         mockMvc.perform(get("/create_account"))

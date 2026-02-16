@@ -17,7 +17,7 @@
         <input type="submit" value="Email successfully sent" class="island-button" disabled="disabled"/>
     </div>
     <div class="island-footer">
-        <a href="/create_account" th:href="@{/create_account}" class="link-lowlight">Resend activation email</a>
+        <a href="/create_account" th:href="${pathPrefix + '/create_account'}" class="link-lowlight">Resend activation email</a>
     </div>
 </div>
 </html>

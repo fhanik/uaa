@@ -8,8 +8,11 @@ import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
 import org.cloudfoundry.identity.uaa.provider.NoSuchClientException;
 import org.cloudfoundry.identity.uaa.security.beans.SecurityContextAccessor;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
+
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.AccessDeniedException;
@@ -58,7 +61,10 @@ public class ProfileController {
      * Display the current user's approvals
      */
     @GetMapping({"/profile", "/z/{subdomain}/profile"})
-    public String get(Authentication authentication, Model model) {
+    public String get(Authentication authentication, Model model, HttpServletRequest request) {
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("pathPrefix", pathPrefix);
         Map<String, List<DescribedApproval>> approvals = getCurrentApprovalsForUser(getCurrentUserId());
         Map<String, String> clientNames = getClientNames(approvals);
         model.addAttribute("clientnames", clientNames);

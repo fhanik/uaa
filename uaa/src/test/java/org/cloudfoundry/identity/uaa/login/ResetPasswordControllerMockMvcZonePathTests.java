@@ -567,6 +567,29 @@ public class ResetPasswordControllerMockMvcZonePathTests {
                 .andExpect(model().attribute("code", "reset_password"));
     }
 
+    /**
+     * email_sent page must render "Back to Sign In" link zone-aware: href="/login" or href="/z/{subdomain}/login".
+     * Passes for SUBDOMAIN; will pass for ZONE_PATH once email_sent template/controller are zone path aware.
+     */
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void email_sent_page_contains_zone_aware_back_to_sign_in_link(ZoneResolutionMode mode) throws Exception {
+        String subdomain = mode == ZoneResolutionMode.ZONE_PATH
+                ? subdomainGenerator.generate().toLowerCase()
+                : "";
+        if (mode == ZoneResolutionMode.ZONE_PATH) {
+            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
+        }
+        String expectedLoginHref = mode == ZoneResolutionMode.ZONE_PATH
+                ? "href=\"/z/" + subdomain + "/login\"" : "href=\"/login\"";
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/email_sent")
+                        .param("code", "reset_password")
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString(expectedLoginHref)));
+    }
+
     @ParameterizedTest
     @EnumSource(ZoneResolutionMode.class)
     void reset_password_full_flow_within_zone(ZoneResolutionMode mode) throws Exception {

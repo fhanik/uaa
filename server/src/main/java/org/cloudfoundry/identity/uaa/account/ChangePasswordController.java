@@ -3,6 +3,7 @@ package org.cloudfoundry.identity.uaa.account;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationDetails;
 import org.cloudfoundry.identity.uaa.scim.exception.InvalidPasswordException;
 import org.springframework.http.HttpStatus;
@@ -26,7 +27,10 @@ public class ChangePasswordController {
     }
 
     @GetMapping({"/change_password", "/z/{subdomain}/change_password"})
-    public String changePasswordPage() {
+    public String changePasswordPage(Model model, HttpServletRequest request) {
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("formAction", pathPrefix + "/change_password.do");
         return "change_password";
     }
 
@@ -41,6 +45,7 @@ public class ChangePasswordController {
 
         PasswordConfirmationValidation validation = new PasswordConfirmationValidation(newPassword, confirmPassword);
         if (!validation.valid()) {
+            addFormActionToModel(model, request);
             model.addAttribute("message_code", validation.getMessageCode());
             response.setStatus(HttpStatus.UNPROCESSABLE_ENTITY.value());
             return "change_password";
@@ -66,7 +71,14 @@ public class ChangePasswordController {
         } catch (InvalidPasswordException e) {
             model.addAttribute("message", e.getMessagesAsOneString());
         }
+        addFormActionToModel(model, request);
         response.setStatus(HttpStatus.UNPROCESSABLE_ENTITY.value());
         return "change_password";
+    }
+
+    private void addFormActionToModel(Model model, HttpServletRequest request) {
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("formAction", pathPrefix + "/change_password.do");
     }
 }

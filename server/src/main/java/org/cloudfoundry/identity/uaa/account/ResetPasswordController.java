@@ -166,9 +166,14 @@ public class ResetPasswordController {
     }
 
     @GetMapping({"/email_sent", "/z/{subdomain}/email_sent"})
-    public String emailSentPage(@ModelAttribute("code") String code,
+    public String emailSentPage(Model model,
+            @ModelAttribute("code") String code,
+            HttpServletRequest request,
             HttpServletResponse response) {
         response.addHeader("Content-Security-Policy", "frame-ancestors 'none'");
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("loginUrl", pathPrefix + "/login");
         return "email_sent";
     }
 

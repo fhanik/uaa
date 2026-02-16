@@ -6,6 +6,7 @@ import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
 import org.cloudfoundry.identity.uaa.provider.IdentityProviderProvisioning;
 import org.cloudfoundry.identity.uaa.scim.exception.InvalidPasswordException;
 import org.cloudfoundry.identity.uaa.util.DomainFilter;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.springframework.http.HttpStatus;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.client.HttpClientErrorException;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
@@ -43,10 +45,12 @@ public class AccountsController {
     public String activationEmail(Model model,
                                   @RequestParam(value = "client_id", required = false) String clientId,
                                   @RequestParam(value = "redirect_uri", required = false) String redirectUri,
+                                  HttpServletRequest request,
                                   HttpServletResponse response) {
         if (!IdentityZoneHolder.get().getConfig().getLinks().getSelfService().isSelfServiceLinksEnabled()) {
             return handleSelfServiceDisabled(model, response, "error_message_code", "self_service_disabled");
         }
+        addPathPrefixToModel(model, request);
         model.addAttribute("client_id", clientId);
         model.addAttribute("redirect_uri", redirectUri);
         updateModelWithConsentAttributes(model);
@@ -55,7 +59,7 @@ public class AccountsController {
     }
 
     @PostMapping({"/create_account.do", "/z/{subdomain}/create_account.do"})
-    public String sendActivationEmail(Model model, HttpServletResponse response,
+    public String sendActivationEmail(Model model, HttpServletRequest request, HttpServletResponse response,
                                       @RequestParam(value = "client_id", required = false) String clientId,
                                       @RequestParam(value = "redirect_uri", required = false) String redirectUri,
                                       @Valid @ModelAttribute ValidEmail email, BindingResult result,
@@ -65,37 +69,38 @@ public class AccountsController {
 
         BrandingInformation zoneBranding = IdentityZoneHolder.get().getConfig().getBranding();
         if (zoneBranding != null && zoneBranding.getConsent() != null && !doesUserConsent) {
-            return handleUnprocessableEntity(model, response, "error_message_code", "missing_consent");
+            return handleUnprocessableEntity(model, response, request, "error_message_code", "missing_consent");
         }
         if (!IdentityZoneHolder.get().getConfig().getLinks().getSelfService().isSelfServiceLinksEnabled()) {
             return handleSelfServiceDisabled(model, response, "error_message_code", "self_service_disabled");
         }
         if (result.hasErrors()) {
-            return handleUnprocessableEntity(model, response, "error_message_code", "invalid_email");
+            return handleUnprocessableEntity(model, response, request, "error_message_code", "invalid_email");
         }
 
         List<IdentityProvider> identityProviderList = DomainFilter.getIdpsForEmailDomain(identityProviderProvisioning.retrieveAll(true, IdentityZoneHolder.get().getId()), email.getEmail());
         identityProviderList = identityProviderList.stream().filter(idp -> !idp.getOriginKey().equals(OriginKeys.UAA)).toList();
         if (!identityProviderList.isEmpty()) {
             model.addAttribute("email", email.getEmail());
-            return handleUnprocessableEntity(model, response, "error_message_code", "other_idp");
+            return handleUnprocessableEntity(model, response, request, "error_message_code", "other_idp");
         }
         PasswordConfirmationValidation validation = new PasswordConfirmationValidation(password, passwordConfirmation);
         if (!validation.valid()) {
-            return handleUnprocessableEntity(model, response, "error_message_code", validation.getMessageCode());
+            return handleUnprocessableEntity(model, response, request, "error_message_code", validation.getMessageCode());
         }
         try {
             accountCreationService.beginActivation(email.getEmail(), password, clientId, redirectUri);
         } catch (UaaException e) {
-            return handleUnprocessableEntity(model, response, "error_message_code", "username_exists");
+            return handleUnprocessableEntity(model, response, request, "error_message_code", "username_exists");
         } catch (InvalidPasswordException e) {
-            return handleUnprocessableEntity(model, response, "error_message", e.getMessagesAsOneString());
+            return handleUnprocessableEntity(model, response, request, "error_message", e.getMessagesAsOneString());
         }
         return "redirect:accounts/email_sent";
     }
 
     @GetMapping({"/accounts/email_sent", "/z/{subdomain}/accounts/email_sent"})
-    public String emailSent() {
+    public String emailSent(Model model, HttpServletRequest request) {
+        addPathPrefixToModel(model, request);
         return "accounts/email_sent";
     }
 
@@ -108,12 +113,14 @@ public class AccountsController {
     @GetMapping({"/verify_user", "/z/{subdomain}/verify_user"})
     public String verifyUser(Model model,
                              @RequestParam String code,
+                             HttpServletRequest request,
                              HttpServletResponse response, HttpSession session) {
 
         AccountCreationService.AccountCreationResponse accountCreation;
         try {
             accountCreation = accountCreationService.completeActivation(code);
         } catch (HttpClientErrorException e) {
+            addPathPrefixToModel(model, request);
             model.addAttribute("error_message_code", "code_expired");
             response.setStatus(HttpStatus.UNPROCESSABLE_ENTITY.value());
             return "accounts/link_prompt";
@@ -127,11 +134,23 @@ public class AccountsController {
         return res;
     }
 
-    private String handleUnprocessableEntity(Model model, HttpServletResponse response, String attributeKey, String attributeValue) {
+    private String handleUnprocessableEntity(Model model, HttpServletResponse response, HttpServletRequest request, String attributeKey, String attributeValue) {
+        if (request != null) {
+            addPathPrefixToModel(model, request);
+        }
         model.addAttribute(attributeKey, attributeValue);
         updateModelWithConsentAttributes(model);
         response.setStatus(HttpStatus.UNPROCESSABLE_ENTITY.value());
         return "accounts/new_activation_email";
+    }
+
+    private void addPathPrefixToModel(Model model, HttpServletRequest request) {
+        if (request == null) {
+            return;
+        }
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("pathPrefix", pathPrefix);
     }
 
     private String handleSelfServiceDisabled(Model model, HttpServletResponse response, String attributeKey, String attributeValue) {
