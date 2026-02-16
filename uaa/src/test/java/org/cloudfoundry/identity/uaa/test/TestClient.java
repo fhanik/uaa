@@ -1,11 +1,10 @@
 package org.cloudfoundry.identity.uaa.test;
 
 import org.apache.commons.codec.binary.Base64;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.mock.util.OAuthToken;
 import org.cloudfoundry.identity.uaa.oauth.token.TokenConstants;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.springframework.http.HttpMethod;
+import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -28,19 +27,17 @@ public class TestClient {
 
     public String getClientCredentialsOAuthAccessToken(String clientId, String clientSecret, String scope, String subdomain)
             throws Exception {
-        return getClientCredentialsOAuthAccessToken(ZoneResolutionMode.SUBDOMAIN, clientId, clientSecret, scope, subdomain);
-    }
-
-    public String getClientCredentialsOAuthAccessToken(ZoneResolutionMode mode, String clientId, String clientSecret, String scope, String subdomain)
-            throws Exception {
         String basicDigestHeaderValue = "Basic "
                 + new String(Base64.encodeBase64((clientId + ":" + clientSecret).getBytes()));
-        MockHttpServletRequestBuilder oauthTokenPost = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.POST, "/oauth/token")
+        MockHttpServletRequestBuilder oauthTokenPost = post("/oauth/token")
                 .header("Authorization", basicDigestHeaderValue)
                 .param("grant_type", "client_credentials")
                 .param("client_id", clientId)
                 .param(TokenConstants.REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue())
                 .param("scope", scope);
+        if (subdomain != null && !"".equals(subdomain)) {
+            oauthTokenPost.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+        }
         MvcResult result = mockMvc.perform(oauthTokenPost)
                 .andExpect(status().isOk())
                 .andReturn();

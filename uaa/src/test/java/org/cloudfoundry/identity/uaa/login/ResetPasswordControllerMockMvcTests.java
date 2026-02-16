@@ -7,11 +7,8 @@ import org.cloudfoundry.identity.uaa.codestore.ExpiringCodeStore;
 import org.cloudfoundry.identity.uaa.codestore.JdbcExpiringCodeStore;
 import org.cloudfoundry.identity.uaa.message.util.FakeJavaMailSender;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.IdentityZoneCreationResult;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.PredictableGenerator;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.common.util.RandomValueStringGenerator;
-import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
 import org.cloudfoundry.identity.uaa.provider.JdbcIdentityProviderProvisioning;
 import org.cloudfoundry.identity.uaa.provider.PasswordPolicy;
@@ -21,15 +18,11 @@ import org.cloudfoundry.identity.uaa.scim.ScimUserProvisioning;
 import org.cloudfoundry.identity.uaa.scim.endpoints.PasswordChange;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
-import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -59,19 +52,13 @@ import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.CookieCsrfPos
 import static org.hamcrest.Matchers.equalTo;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.hamcrest.Matchers.containsString;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.forwardedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 @DefaultTestContext
 public class ResetPasswordControllerMockMvcTests {
-    private final AlphanumericRandomValueStringGenerator subdomainGenerator = new AlphanumericRandomValueStringGenerator();
-
     @Autowired
     public WebApplicationContext webApplicationContext;
     private ExpiringCodeStore codeStore;
@@ -304,7 +291,7 @@ public class ResetPasswordControllerMockMvcTests {
         };
         SessionUtils.setSavedRequestSession(session, savedRequest);
 
-        PredictableGenerator generator = new PredictableGenerator("redirectSaved");
+        PredictableGenerator generator = new PredictableGenerator();
         JdbcExpiringCodeStore store = webApplicationContext.getBean(JdbcExpiringCodeStore.class);
         store.setGenerator(generator);
 
@@ -313,7 +300,7 @@ public class ResetPasswordControllerMockMvcTests {
                         .param("username", user.getUserName()))
                 .andExpect(redirectedUrl("email_sent?code=reset_password"));
 
-        mockMvc.perform(createChangePasswordRequest(user, "redirectSaved" + generator.counter.get(), true, "secret1", "secret1")
+        mockMvc.perform(createChangePasswordRequest(user, "test" + generator.counter.get(), true, "secret1", "secret1")
                         .session(session))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/login?success=password_reset"));
@@ -434,16 +421,7 @@ public class ResetPasswordControllerMockMvcTests {
     }
 
     private MockHttpServletRequestBuilder createChangePasswordRequest(ScimUser user, String code, boolean useCSRF, String password, String passwordConfirmation) {
-        return createChangePasswordRequest(user, code, useCSRF, password, passwordConfirmation, null, null);
-    }
-
-    private MockHttpServletRequestBuilder createChangePasswordRequest(ScimUser user, String code, boolean useCSRF, String password, String passwordConfirmation, ZoneResolutionMode mode, String subdomain) {
-        MockHttpServletRequestBuilder post;
-        if (mode != null && subdomain != null) {
-            post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/reset_password.do");
-        } else {
-            post = post("/reset_password.do");
-        }
+        MockHttpServletRequestBuilder post = post("/reset_password.do");
         if (useCSRF) {
             post.with(cookieCsrf());
         }
@@ -452,175 +430,5 @@ public class ResetPasswordControllerMockMvcTests {
                 .param("password", password)
                 .param("password_confirmation", passwordConfirmation);
         return post;
-    }
-
-    /**
-     * Creates another identity zone (with admin client) and a user in that zone for zone-path tests.
-     * Returns the created user; the zone is in the DB and request-based resolution will use it.
-     */
-    private ScimUser createUserInOtherZone(String subdomain) throws Exception {
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mockMvc, "admin", "admin-secret", null, subdomain);
-        String username = new RandomValueStringGenerator().generate() + "@test.org";
-        ScimUser user = new ScimUser(null, username, "givenname", "familyname");
-        user.setPrimaryEmail(username);
-        user.setPassword("secret");
-        return MockMvcUtils.createUserInZone(mockMvc, adminToken, user, zoneResult.getIdentityZone().getSubdomain());
-    }
-
-    /**
-     * Creates another identity zone (with admin client) and a user in that zone; returns both for tests that need to generate codes in the zone.
-     */
-    private IdentityZoneCreationResult createZoneAndUserInOtherZone(String subdomain, ScimUser[] userOut) throws Exception {
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mockMvc, "admin", "admin-secret", null, subdomain);
-        String username = new RandomValueStringGenerator().generate() + "@test.org";
-        ScimUser user = new ScimUser(null, username, "givenname", "familyname");
-        user.setPrimaryEmail(username);
-        user.setPassword("secret");
-        ScimUser created = MockMvcUtils.createUserInZone(mockMvc, adminToken, user, zoneResult.getIdentityZone().getSubdomain());
-        userOut[0] = created;
-        return zoneResult;
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void get_forgot_password_within_zone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = subdomainGenerator.generate().toLowerCase();
-        MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
-
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/forgot_password")
-                        .param("client_id", "example")
-                        .param("redirect_uri", "http://example.com"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("forgot_password"))
-                .andExpect(model().attribute("client_id", "example"))
-                .andExpect(model().attribute("redirect_uri", "http://example.com"));
-    }
-
-    /**
-     * Forgot password page must be zone-path aware: form action and "Back to Sign In" link
-     * must use the zone path prefix when present.
-     * Passes for SUBDOMAIN (no /z/ path); will pass for ZONE_PATH once forgot_password.html is made zone-aware.
-     */
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void forgot_password_page_has_zone_aware_form_action_and_login_link(ZoneResolutionMode mode) throws Exception {
-        String subdomain = mode == ZoneResolutionMode.ZONE_PATH
-                ? subdomainGenerator.generate().toLowerCase()
-                : "";
-        if (mode == ZoneResolutionMode.ZONE_PATH) {
-            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
-        }
-
-        String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/forgot_password.do" : "/forgot_password.do";
-        String expectedLoginPath = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/login" : "/login";
-
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/forgot_password")
-                        .accept(MediaType.TEXT_HTML))
-                .andExpect(status().isOk())
-                .andExpect(view().name("forgot_password"))
-                .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")))
-                .andExpect(content().string(containsString(expectedLoginPath)));
-    }
-
-    /**
-     * Backwards compatibility: when UAA is deployed with context path /uaa (e.g. integration tests),
-     * forgot_password page must render form action and login link with /uaa prefix.
-     */
-    @Test
-    void forgotPasswordPageWithContextPath_returnsFormActionAndLoginLinkWithContextPath() throws Exception {
-        mockMvc.perform(get("/uaa/forgot_password").contextPath("/uaa").accept(MediaType.TEXT_HTML))
-                .andExpect(status().isOk())
-                .andExpect(view().name("forgot_password"))
-                .andExpect(content().string(containsString("action=\"/uaa/forgot_password.do\"")))
-                .andExpect(content().string(containsString("/uaa/login")));
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void forgot_password_redirects_to_email_sent_within_zone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = subdomainGenerator.generate().toLowerCase();
-        ScimUser user = createUserInOtherZone(subdomain);
-
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/forgot_password.do")
-                        .param("username", user.getUserName()))
-                .andExpect(status().isFound())
-                .andExpect(redirectedUrl("email_sent?code=reset_password"));
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void get_email_sent_within_zone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = subdomainGenerator.generate().toLowerCase();
-        MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
-
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/email_sent")
-                        .param("code", "reset_password"))
-                .andExpect(status().isOk())
-                .andExpect(model().attribute("code", "reset_password"));
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void reset_password_full_flow_within_zone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = subdomainGenerator.generate().toLowerCase();
-        ScimUser user = createUserInOtherZone(subdomain);
-
-        PredictableGenerator generator = new PredictableGenerator("fp-" + subdomain);
-        JdbcExpiringCodeStore store = webApplicationContext.getBean(JdbcExpiringCodeStore.class);
-        store.setGenerator(generator);
-
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/forgot_password.do")
-                        .param("username", user.getUserName()))
-                .andExpect(status().isFound())
-                .andExpect(redirectedUrl("email_sent?code=reset_password"));
-
-        String code = "fp-" + subdomain + generator.counter.get();
-        String expectedLoginRedirect = mode == ZoneResolutionMode.ZONE_PATH
-                ? "/z/" + subdomain + "/login?success=password_reset"
-                : "/login?success=password_reset";
-        mockMvc.perform(createChangePasswordRequest(user, code, true, "secret1", "secret1", mode, subdomain))
-                .andExpect(status().isFound())
-                .andExpect(redirectedUrl(expectedLoginRedirect));
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void get_reset_password_with_code_within_zone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = subdomainGenerator.generate().toLowerCase();
-        ScimUser[] userHolder = new ScimUser[1];
-        IdentityZoneCreationResult zoneResult = createZoneAndUserInOtherZone(subdomain, userHolder);
-        ScimUser user = userHolder[0];
-
-        IdentityZone zone = zoneResult.getIdentityZone();
-        IdentityZone previousZone = IdentityZoneHolder.get();
-        try {
-            IdentityZoneHolder.set(zone);
-            PasswordChange change = new PasswordChange(user.getId(), user.getUserName(), user.getPasswordLastModified(), "", "");
-            ExpiringCode code = codeStore.generateCode(JsonUtils.writeValueAsString(change), new Timestamp(System.currentTimeMillis() + UaaResetPasswordService.PASSWORD_RESET_LIFETIME), FORGOT_PASSWORD_INTENT_PREFIX + user.getId(), zone.getId());
-
-            String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/reset_password.do" : "/reset_password.do";
-
-            MockHttpServletRequestBuilder getRequest = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/reset_password")
-                    .param("code", code.getCode())
-                    .accept(MediaType.TEXT_HTML);
-
-            mockMvc.perform(getRequest)
-                    .andExpect(status().isOk())
-                    .andExpect(view().name("reset_password"))
-                    .andExpect(content().string(containsString("Reset Password")))
-                    .andExpect(content().string(containsString("Username: " + user.getUserName())))
-                    .andExpect(content().string(containsString("Create new password")))
-                    .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")));
-        } finally {
-            IdentityZoneHolder.set(previousZone);
-        }
     }
 }

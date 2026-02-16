@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 
@@ -79,6 +80,9 @@ public enum ZoneResolutionMode {
         }
         if (method == HttpMethod.OPTIONS) {
             return options(path, pathVars);
+        }
+        if (method == HttpMethod.PATCH) {
+            return patch(path, pathVars);
         }
         throw new IllegalArgumentException("Unsupported method: " + method);
     }

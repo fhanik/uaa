@@ -19,10 +19,7 @@ import org.cloudfoundry.identity.uaa.test.UaaTestAccounts;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.HttpMethod;
+import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.Consent;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
@@ -63,6 +60,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.xpath;
 import static org.springframework.util.StringUtils.hasLength;
+import static org.springframework.util.StringUtils.hasText;
 
 @DefaultTestContext
 class AccountsControllerMockMvcTests {
@@ -116,13 +114,13 @@ class AccountsControllerMockMvcTests {
                 .andExpect(content().string(containsString("Create your account")));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void createActivationEmailPageWithinZone(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void createActivationEmailPageWithinZone() throws Exception {
         String subdomain = generator.generate();
         MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/create_account"))
+        mockMvc.perform(get("/create_account")
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost")))
                 .andExpect(content().string(containsString("Create your account")));
     }
 
@@ -134,13 +132,13 @@ class AccountsControllerMockMvcTests {
                 .andExpect(xpath("//input[@disabled='disabled']/@value").string("Email successfully sent"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void activationEmailSentPageWithinZone(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void activationEmailSentPageWithinZone() throws Exception {
         String subdomain = generator.generate();
         MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/accounts/email_sent"))
+        mockMvc.perform(get("/accounts/email_sent")
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Create your account")))
                 .andExpect(xpath("//input[@disabled='disabled']/@value").string("Email successfully sent"))
@@ -153,42 +151,42 @@ class AccountsControllerMockMvcTests {
                 .andExpect(content().string(containsString("<title>Cloud Foundry</title>")));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void pageTitleWithinZone(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void pageTitleWithinZone() throws Exception {
         String subdomain = generator.generate();
         IdentityZone zone = MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/create_account"))
+        mockMvc.perform(get("/create_account")
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost")))
                 .andExpect(content().string(containsString("<title>" + zone.getName() + "</title>")));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void createAccountWithDisableSelfService(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void createAccountWithDisableSelfService() throws Exception {
         String subdomain = generator.generate();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         zone.getConfig().getLinks().getSelfService().setSelfServiceLinksEnabled(false);
 
         MockMvcUtils.createOtherIdentityZoneAndReturnResult(mockMvc, webApplicationContext, getUaaBaseClientDetails(), zone, IdentityZoneHolder.getCurrentZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/create_account"))
+        mockMvc.perform(get("/create_account")
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost")))
                 .andExpect(model().attribute("error_message_code", "self_service_disabled"))
                 .andExpect(view().name("error"))
                 .andExpect(status().isNotFound());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void disableSelfServiceCreateAccountPost(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void disableSelfServiceCreateAccountPost() throws Exception {
         String subdomain = generator.generate();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         zone.getConfig().getLinks().getSelfService().setSelfServiceLinksEnabled(false);
 
         MockMvcUtils.createOtherIdentityZoneAndReturnResult(mockMvc, webApplicationContext, getUaaBaseClientDetails(), zone, IdentityZoneHolder.getCurrentZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/create_account.do")
+        mockMvc.perform(post("/create_account.do")
                         .with(cookieCsrf())
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .param("email", userEmail)
                         .param("password", "secr3T")
                         .param("password_confirmation", "secr3T"))
@@ -203,13 +201,13 @@ class AccountsControllerMockMvcTests {
                 .andExpect(content().string(containsString("background-image: url(/resources/oss/images/product-logo.png);")));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void zoneLogoNull_doNotDisplayImage(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void zoneLogoNull_doNotDisplayImage() throws Exception {
         String subdomain = generator.generate();
         MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/create_account"))
+        mockMvc.perform(get("/create_account")
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost")))
                 .andExpect(content().string(not(containsString("background-image: url(/resources/oss/images/product-logo.png);"))));
     }
 
@@ -328,10 +326,9 @@ class AccountsControllerMockMvcTests {
         assertThat(principal.getOrigin()).isEqualTo(OriginKeys.UAA);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void creatingAnAccountInAnotherZoneWithNoClientRedirect(ZoneResolutionMode mode) throws Exception {
-        String subdomain = "mysubdomain2-" + mode.name().toLowerCase();
+    @Test
+    void creatingAnAccountInAnotherZoneWithNoClientRedirect() throws Exception {
+        String subdomain = "mysubdomain2";
         PredictableGenerator generator = new PredictableGenerator();
         JdbcExpiringCodeStore store = webApplicationContext.getBean(JdbcExpiringCodeStore.class);
         store.setGenerator(generator);
@@ -348,8 +345,9 @@ class AccountsControllerMockMvcTests {
                         .content(JsonUtils.writeValueAsString(identityZone)))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/create_account.do")
+        mockMvc.perform(post("/create_account.do")
                         .with(cookieCsrf())
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .param("email", userEmail)
                         .param("password", USER_PASSWORD)
                         .param("password_confirmation", USER_PASSWORD))
@@ -365,8 +363,9 @@ class AccountsControllerMockMvcTests {
         assertThat(hasLength(link)).isTrue();
         assertThat(link).contains(subdomain + ".localhost");
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/verify_user")
-                        .param("code", "test" + generator.counter.get()))
+        mockMvc.perform(get("/verify_user")
+                        .param("code", "test" + generator.counter.get())
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl(LOGIN_REDIRECT))
                 .andReturn();
@@ -384,10 +383,9 @@ class AccountsControllerMockMvcTests {
         assertThat(principal.getOrigin()).isEqualTo(OriginKeys.UAA);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void creatingAnAccountInAnotherZoneWithClientRedirect(ZoneResolutionMode mode) throws Exception {
-        String subdomain = "mysubdomain1-" + mode.name().toLowerCase();
+    @Test
+    void creatingAnAccountInAnotherZoneWithClientRedirect() throws Exception {
+        String subdomain = "mysubdomain1";
         PredictableGenerator generator = new PredictableGenerator();
         JdbcExpiringCodeStore store = webApplicationContext.getBean(JdbcExpiringCodeStore.class);
         store.setGenerator(generator);
@@ -399,7 +397,8 @@ class AccountsControllerMockMvcTests {
 
         MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, getUaaBaseClientDetails(), IdentityZoneHolder.getCurrentZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/create_account.do")
+        mockMvc.perform(post("/create_account.do")
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                         .with(cookieCsrf())
                         .param("email", userEmail)
                         .param("password", "secr3T")
@@ -414,8 +413,9 @@ class AccountsControllerMockMvcTests {
         assertThat(hasLength(link)).isTrue();
         assertThat(link).contains(subdomain + ".localhost");
 
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/verify_user")
-                        .param("code", "test" + generator.counter.get()))
+        mockMvc.perform(get("/verify_user")
+                        .param("code", "test" + generator.counter.get())
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost")))
                 .andExpect(redirectedUrl(LOGIN_REDIRECT + "&form_redirect_uri=http://myzoneclient.example.com"))
                 .andReturn();
 
@@ -490,9 +490,8 @@ class AccountsControllerMockMvcTests {
                 .andExpect(xpath("//a[text()='here']/@href").string(signUpLink));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void consentIfConfiguredDisplaysConsentTextAndLink(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void consentIfConfiguredDisplaysConsentTextAndLink() throws Exception {
         String randomZoneSubdomain = generator.generate();
         String consentText = "Terms and Conditions";
         String consentLink = "http://google.com";
@@ -505,14 +504,14 @@ class AccountsControllerMockMvcTests {
         zone.getConfig().getBranding().getConsent().setLink(consentLink);
         MockMvcUtils.updateZone(mockMvc, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(randomZoneSubdomain, HttpMethod.GET, "/create_account"))
+        mockMvc.perform(get("/create_account")
+                        .with(new SetServerNameRequestPostProcessor(randomZoneSubdomain + ".localhost")))
                 .andExpect(content().string(containsString(consentText)))
                 .andExpect(content().string(containsString(consentLink)));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void consentIfConfiguredDisplayConsentTextWhenNoLinkConfigured(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void consentIfConfiguredDisplayConsentTextWhenNoLinkConfigured() throws Exception {
         String randomZoneSubdomain = generator.generate();
         String consentText = "Terms and Conditions";
         IdentityZone zone = MockMvcUtils.createOtherIdentityZone(
@@ -523,13 +522,13 @@ class AccountsControllerMockMvcTests {
         zone.getConfig().getBranding().getConsent().setText(consentText);
         MockMvcUtils.updateZone(mockMvc, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(randomZoneSubdomain, HttpMethod.GET, "/create_account"))
+        mockMvc.perform(get("/create_account")
+                        .with(new SetServerNameRequestPostProcessor(randomZoneSubdomain + ".localhost")))
                 .andExpect(content().string(containsString(consentText)));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void consentIfConfiguredDisplaysMeaningfulErrorWhenConsentNotProvided(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void consentIfConfiguredDisplaysMeaningfulErrorWhenConsentNotProvided() throws Exception {
         String randomZoneSubdomain = generator.generate();
         String consentText = "Terms and Conditions";
         IdentityZone zone = MockMvcUtils.createOtherIdentityZone(
@@ -540,7 +539,8 @@ class AccountsControllerMockMvcTests {
         zone.getConfig().getBranding().getConsent().setText(consentText);
         MockMvcUtils.updateZone(mockMvc, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(randomZoneSubdomain, HttpMethod.POST, "/create_account.do")
+        mockMvc.perform(post("/create_account.do")
+                        .with(new SetServerNameRequestPostProcessor(randomZoneSubdomain + ".localhost"))
                         .with(cookieCsrf())
                         .param("email", userEmail)
                         .param("password", USER_PASSWORD)
@@ -602,14 +602,15 @@ class AccountsControllerMockMvcTests {
     }
 
     private ResultActions loginWithAccount(String subdomain) throws Exception {
-        return loginWithAccount(ZoneResolutionMode.SUBDOMAIN, subdomain);
-    }
 
-    private ResultActions loginWithAccount(ZoneResolutionMode mode, String subdomain) throws Exception {
-        MockHttpServletRequestBuilder req = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.POST, "/login.do")
+        MockHttpServletRequestBuilder req = post("/login.do")
                 .param("username", userEmail)
                 .param("password", USER_PASSWORD)
                 .with(cookieCsrf());
+
+        if (hasText(subdomain)) {
+            req.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+        }
 
         return mockMvc.perform(req)
                 .andExpect(status().isFound());

@@ -29,14 +29,11 @@ import org.cloudfoundry.identity.uaa.util.beans.TestBuildInfo;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.Consent;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
-import org.cloudfoundry.identity.uaa.util.ZoneRequestPathMode;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManagerImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -54,9 +51,7 @@ import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.context.web.WebAppConfiguration;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
-import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
-import org.springframework.mock.web.MockHttpSession;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.context.ConfigurableWebApplicationContext;
@@ -91,7 +86,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrlPattern;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.xpath;
@@ -143,24 +137,8 @@ class InvitationsControllerTest {
         SecurityContextHolder.clearContext();
     }
 
-    private static MockHttpServletRequestBuilder requestGet(ZoneRequestPathMode mode, String pathSuffix) {
-        if (mode.redirectPrefix().isEmpty()) {
-            return get(pathSuffix);
-        }
-        return get("/z/{subdomain}" + pathSuffix, mode.getSubdomain());
-    }
-
-    private static MockHttpServletRequestBuilder requestPost(ZoneRequestPathMode mode, String pathSuffix) {
-        if (mode.redirectPrefix().isEmpty()) {
-            return post(pathSuffix);
-        }
-        return post("/z/{subdomain}" + pathSuffix, mode.getSubdomain());
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInvitationsPage(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInvitationsPage() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         Map<String, String> codeData = new HashMap<>();
         codeData.put("user_id", "user-id-001");
@@ -172,7 +150,7 @@ class InvitationsControllerTest {
         provider.setType(OriginKeys.UAA);
         when(providerProvisioning.retrieveByOrigin(any(), any())).thenReturn(provider);
 
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "code"))
+        mockMvc.perform(get("/invitations/accept").param("code", "code"))
                 .andExpect(status().isOk())
                 .andExpect(model().attribute("email", "user@example.com"))
                 .andExpect(model().attribute("code", "code"))
@@ -184,16 +162,14 @@ class InvitationsControllerTest {
         assertThat(principal.getName()).isEqualTo("user@example.com");
         assertThat(principal.getEmail()).isEqualTo("user@example.com");
 
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "code"))
+        mockMvc.perform(get("/invitations/accept").param("code", "code"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(view().name("invitations/accept_invite"))
                 .andExpect(model().attribute("error_message_code", "code_expired"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void incorrectCodeIntent(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void incorrectCodeIntent() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         Map<String, String> codeData = new HashMap<>();
         codeData.put("user_id", "user-id-001");
@@ -202,14 +178,14 @@ class InvitationsControllerTest {
         codeData.put("redirect_uri", "blah.test.com");
         when(expiringCodeStore.retrieveCode("the_secret_code", zoneId)).thenReturn(new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), "incorrect-code-intent"));
 
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "the_secret_code"))
-                .andExpect(status().isUnprocessableEntity());
+        MockHttpServletRequestBuilder get = get("/invitations/accept")
+                .param("code", "the_secret_code");
+
+        mockMvc.perform(get).andExpect(status().isUnprocessableEntity());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInvitePage_for_unverifiedSamlUser(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInvitePage_for_unverifiedSamlUser() throws Exception {
         Map<String, String> codeData = getInvitationsCode("test-saml");
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.peekCode("the_secret_code", zoneId)).thenReturn(createCode(codeData));
@@ -224,8 +200,10 @@ class InvitationsControllerTest {
         provider.setConfig(definition);
         provider.setType(OriginKeys.SAML);
         when(providerProvisioning.retrieveByOrigin(eq("test-saml"), anyString())).thenReturn(provider);
+        MockHttpServletRequestBuilder get = get("/invitations/accept")
+                .param("code", "the_secret_code");
 
-        MvcResult result = mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "the_secret_code"))
+        MvcResult result = mockMvc.perform(get)
                 .andExpect(redirectedUrl("/saml2/authenticate/test-saml"))
                 .andReturn();
 
@@ -233,10 +211,8 @@ class InvitationsControllerTest {
         assertThat(result.getRequest().getSession().getAttribute("user_id")).isEqualTo("user-id-001");
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInvitePage_for_unverifiedOIDCUser(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInvitePage_for_unverifiedOIDCUser() throws Exception {
         Map<String, String> codeData = getInvitationsCode("test-oidc");
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.peekCode("the_secret_code", zoneId)).thenReturn(createCode(codeData));
@@ -250,7 +226,10 @@ class InvitationsControllerTest {
         when(providerProvisioning.retrieveByOrigin(eq("test-oidc"), anyString())).thenReturn(provider);
         when(externalOAuthProviderConfigurator.getIdpAuthenticationUrl(any(), any(), any())).thenReturn("http://example.com");
 
-        MvcResult result = mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "the_secret_code"))
+        MockHttpServletRequestBuilder get = get("/invitations/accept")
+                .param("code", "the_secret_code");
+
+        MvcResult result = mockMvc.perform(get)
                 .andExpect(redirectedUrl("http://example.com"))
                 .andReturn();
 
@@ -258,10 +237,8 @@ class InvitationsControllerTest {
         assertThat(result.getRequest().getSession().getAttribute("user_id")).isEqualTo("user-id-001");
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInvitePage_for_unverifiedLdapUser(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInvitePage_for_unverifiedLdapUser() throws Exception {
         Map<String, String> codeData = getInvitationsCode(LDAP);
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.peekCode("the_secret_code", zoneId)).thenReturn(createCode(codeData));
@@ -270,17 +247,17 @@ class InvitationsControllerTest {
         provider.setType(LDAP);
         when(providerProvisioning.retrieveByOrigin(eq(LDAP), anyString())).thenReturn(provider);
 
-        ResultActions actions = mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "the_secret_code"))
+        MockHttpServletRequestBuilder get = get("/invitations/accept")
+                .param("code", "the_secret_code");
+
+        mockMvc.perform(get)
                 .andExpect(view().name("invitations/accept_invite"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Email: " + "user@example.com")))
                 .andExpect(content().string(containsString("Sign in with enterprise credentials:")))
                 .andExpect(content().string(containsString("username")))
-                .andExpect(model().attribute("code", "the_secret_code"));
-        if (mode.redirectPrefix() != null && !mode.redirectPrefix().isEmpty()) {
-            // LDAP flow shows enterprise form, so form action is accept_enterprise.do
-            actions.andExpect(content().string(containsString("action=\"" + mode.redirectPrefix() + "/invitations/accept_enterprise.do\"")));
-        }
+                .andExpect(model().attribute("code", "the_secret_code"))
+                .andReturn();
     }
 
     private Map<String, String> getInvitationsCode(String origin) {
@@ -293,10 +270,8 @@ class InvitationsControllerTest {
         return codeData;
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void unverifiedLdapUser_acceptsInvite_byLoggingIn(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void unverifiedLdapUser_acceptsInvite_byLoggingIn() throws Exception {
         Map<String, String> codeData = getInvitationsCode(LDAP);
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.retrieveCode("the_secret_code", zoneId)).thenReturn(new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), null));
@@ -324,13 +299,12 @@ class InvitationsControllerTest {
         when(invitationsService.acceptInvitation(anyString(), anyString())).thenReturn(new AcceptedInvitation("blah.test.com", new ScimUser()));
         when(expiringCodeStore.generateCode(anyString(), any(), eq(null), eq(zoneId))).thenReturn(new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), null));
 
-        String expectedRedirect = mode.redirectPrefix() + "/login?success=invite_accepted&form_redirect_uri=blah.test.com";
-        mockMvc.perform(requestPost(mode, "/invitations/accept_enterprise.do")
+        mockMvc.perform(post("/invitations/accept_enterprise.do")
                         .param("enterprise_username", "test-ldap-user")
                         .param("enterprise_password", "password")
                         .param("enterprise_email", "email")
                         .param("code", "the_secret_code"))
-                .andExpect(redirectedUrl(expectedRedirect))
+                .andExpect(redirectedUrl("/login?success=invite_accepted&form_redirect_uri=blah.test.com"))
                 .andReturn();
 
         verify(ldapActual).authenticate(any());
@@ -342,10 +316,8 @@ class InvitationsControllerTest {
         verify(ldapAuthenticationManager).authenticate(any());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void unverifiedLdapUser_acceptsInvite_byLoggingIn_bad_credentials(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void unverifiedLdapUser_acceptsInvite_byLoggingIn_bad_credentials() throws Exception {
         Map<String, String> codeData = getInvitationsCode("ldap");
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.retrieveCode("the_secret_code", zoneId)).thenReturn(new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), null));
@@ -360,7 +332,7 @@ class InvitationsControllerTest {
         when(auth.isAuthenticated()).thenReturn(true);
         when(ldapActual.authenticate(any())).thenThrow(new BadCredentialsException("bad creds"));
 
-        mockMvc.perform(requestPost(mode, "/invitations/accept_enterprise.do")
+        mockMvc.perform(post("/invitations/accept_enterprise.do")
                         .param("enterprise_username", "test-ldap-user")
                         .param("enterprise_password", "password")
                         .param("enterprise_email", "email")
@@ -371,10 +343,8 @@ class InvitationsControllerTest {
                 .andReturn();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void unverifiedLdapUser_acceptsInvite_byLoggingIn_whereEmailDoesNotMatchAuthenticatedEmail(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void unverifiedLdapUser_acceptsInvite_byLoggingIn_whereEmailDoesNotMatchAuthenticatedEmail() throws Exception {
         Map<String, String> codeData = getInvitationsCode(LDAP);
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.retrieveCode("the_secret_code", zoneId)).thenReturn(new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), null));
@@ -395,7 +365,7 @@ class InvitationsControllerTest {
         when(scimUserProvisioning.retrieve("user-id-001", zoneId)).thenReturn(invitedUser);
         when(expiringCodeStore.generateCode(anyString(), any(), eq(null), eq(zoneId))).thenReturn(new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), null));
 
-        mockMvc.perform(requestPost(mode, "/invitations/accept_enterprise.do")
+        mockMvc.perform(post("/invitations/accept_enterprise.do")
                         .param("enterprise_username", "test-ldap-user")
                         .param("enterprise_password", "password")
                         .param("enterprise_email", "email")
@@ -412,10 +382,8 @@ class InvitationsControllerTest {
         verify(ldapActual).authenticate(any());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInvitePage_for_verifiedUser(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInvitePage_for_verifiedUser() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         UaaUser user = new UaaUser("user@example.com", "", "user@example.com", "Given", "family");
         user.modifyId("verified-user");
@@ -431,8 +399,10 @@ class InvitationsControllerTest {
         IdentityProvider provider = new IdentityProvider<>();
         provider.setType(OriginKeys.UAA);
         when(providerProvisioning.retrieveByOrigin(anyString(), anyString())).thenReturn(provider);
+        MockHttpServletRequestBuilder get = get("/invitations/accept")
+                .param("code", "the_secret_code");
 
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "the_secret_code"))
+        mockMvc.perform(get)
                 .andExpect(redirectedUrl("blah.test.com"));
     }
 
@@ -440,10 +410,8 @@ class InvitationsControllerTest {
         return new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), INVITATION.name());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void incorrectGeneratedCodeIntent_for_verifiedUser(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void incorrectGeneratedCodeIntent_for_verifiedUser() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         UaaUser user = new UaaUser("user@example.com", "", "user@example.com", "Given", "family");
         user.modifyId("verified-user");
@@ -457,17 +425,18 @@ class InvitationsControllerTest {
         when(expiringCodeStore.generateCode(anyString(), any(), eq(null), eq(zoneId))).thenReturn(new ExpiringCode("code", new Timestamp(System.currentTimeMillis()), JsonUtils.writeValueAsString(codeData), "incorrect-code-intent"));
         when(invitationsService.acceptInvitation("incorrect-code-intent", "")).thenThrow(new HttpClientErrorException(BAD_REQUEST));
 
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "the_secret_code"))
-                .andExpect(status().isUnprocessableEntity());
+        MockHttpServletRequestBuilder get = get("/invitations/accept")
+                .param("code", "the_secret_code");
+
+        mockMvc.perform(get).andExpect(status().isUnprocessableEntity());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInvitePageWithExpiredCode(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInvitePageWithExpiredCode() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.retrieveCode(anyString(), eq(zoneId))).thenReturn(null);
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "the_secret_code"))
+        MockHttpServletRequestBuilder get = get("/invitations/accept").param("code", "the_secret_code");
+        mockMvc.perform(get)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(model().attribute("error_message_code", "code_expired"))
                 .andExpect(view().name("invitations/accept_invite"))
@@ -476,11 +445,9 @@ class InvitationsControllerTest {
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void missing_code(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
-        MockHttpServletRequestBuilder post = startAcceptInviteFlow(mode, "a", "a");
+    @Test
+    void missing_code() throws Exception {
+        MockHttpServletRequestBuilder post = startAcceptInviteFlow("a", "a");
 
         String zoneId = IdentityZoneHolder.get().getId();
         when(expiringCodeStore.retrieveCode("thecode", zoneId)).thenReturn(null);
@@ -497,11 +464,9 @@ class InvitationsControllerTest {
         verify(invitationsService, never()).acceptInvitation(anyString(), anyString());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void invalid_principal_id(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
-        MockHttpServletRequestBuilder post = startAcceptInviteFlow(mode, "a", "a");
+    @Test
+    void invalid_principal_id() throws Exception {
+        MockHttpServletRequestBuilder post = startAcceptInviteFlow("a", "a");
 
         String zoneId = IdentityZoneHolder.get().getId();
         Map<String, String> codeData = getInvitationsCode(OriginKeys.UAA);
@@ -521,12 +486,10 @@ class InvitationsControllerTest {
         verify(invitationsService, never()).acceptInvitation(anyString(), anyString());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteWithContraveningPassword(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInviteWithContraveningPassword() throws Exception {
         doThrow(new InvalidPasswordException(Arrays.asList("Msg 2c", "Msg 1c"))).when(passwordValidator).validate("a");
-        MockHttpServletRequestBuilder post = startAcceptInviteFlow(mode, "a", "a");
+        MockHttpServletRequestBuilder post = startAcceptInviteFlow("a", "a");
 
         String zoneId = IdentityZoneHolder.get().getId();
         Map<String, String> codeData = getInvitationsCode(OriginKeys.UAA);
@@ -541,25 +504,21 @@ class InvitationsControllerTest {
         IdentityProvider identityProvider = new IdentityProvider<>();
         identityProvider.setType(OriginKeys.UAA);
         when(providerProvisioning.retrieveByOrigin("uaa", "uaa")).thenReturn(identityProvider);
-        // Redirect may include query params (e.g. error_message, code) due to model on redirect
-        String redirectPattern = mode.redirectPrefix().isEmpty() ? "accept*" : mode.redirectPrefix() + "/invitations/accept*";
         mockMvc.perform(post)
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrlPattern(redirectPattern))
                 .andExpect(model().attribute("error_message", "Msg 1c Msg 2c"))
-                .andExpect(model().attribute("code", "thenewcode2"));
+                .andExpect(model().attribute("code", "thenewcode2"))
+                .andExpect(view().name("redirect:accept"));
         verify(expiringCodeStore).retrieveCode("thecode", zoneId);
         verify(expiringCodeStore, times(2)).generateCode(anyString(), any(), anyString(), eq(zoneId));
         verify(invitationsService, never()).acceptInvitation(anyString(), anyString());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInvite(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInvite() throws Exception {
         ScimUser user = new ScimUser("user-id-001", "user@example.com", "fname", "lname");
         user.setPrimaryEmail(user.getUserName());
-        MockHttpServletRequestBuilder post = startAcceptInviteFlow(mode, "passw0rd", "passw0rd");
+        MockHttpServletRequestBuilder post = startAcceptInviteFlow("passw0rd", "passw0rd");
 
         String zoneId = IdentityZoneHolder.get().getId();
         Map<String, String> codeData = getInvitationsCode(OriginKeys.UAA);
@@ -575,34 +534,27 @@ class InvitationsControllerTest {
 
         when(invitationsService.acceptInvitation(anyString(), eq("passw0rd"))).thenReturn(new AcceptedInvitation("/home", user));
 
-        String expectedRedirect = mode.redirectPrefix() + "/login?success=invite_accepted";
         mockMvc.perform(post)
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl(expectedRedirect)).andReturn();
+                .andExpect(redirectedUrl("/login?success=invite_accepted")).andReturn();
 
         verify(invitationsService).acceptInvitation(anyString(), eq("passw0rd"));
     }
 
     private MockHttpServletRequestBuilder startAcceptInviteFlow(String password, String passwordConfirmation) {
-        return startAcceptInviteFlow(ZoneRequestPathMode.DEFAULT, password, passwordConfirmation);
-    }
-
-    private MockHttpServletRequestBuilder startAcceptInviteFlow(ZoneRequestPathMode mode, String password, String passwordConfirmation) {
         String zoneId = IdentityZoneHolder.get().getId();
         UaaPrincipal uaaPrincipal = new UaaPrincipal("user-id-001", "user@example.com", "user@example.com", OriginKeys.UAA, null, zoneId);
         UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(uaaPrincipal, null, UaaAuthority.USER_AUTHORITIES);
         SecurityContextHolder.getContext().setAuthentication(token);
 
-        return requestPost(mode, "/invitations/accept.do")
+        return post("/invitations/accept.do")
                 .param("code", "thecode")
                 .param("password", password)
                 .param("password_confirmation", passwordConfirmation);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteWithValidClientRedirect(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInviteWithValidClientRedirect() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         UaaPrincipal uaaPrincipal = new UaaPrincipal("user-id-001", "user@example.com", "user@example.com", OriginKeys.UAA, null, zoneId);
         ScimUser user = new ScimUser(uaaPrincipal.getId(), uaaPrincipal.getName(), "fname", "lname");
@@ -617,24 +569,18 @@ class InvitationsControllerTest {
         when(expiringCodeStore.generateCode(eq(codeDataString), any(), eq(INVITATION.name()), eq(zoneId))).thenReturn(new ExpiringCode("thenewcode", new Timestamp(1), codeDataString, INVITATION.name()));
         when(invitationsService.acceptInvitation(anyString(), eq("password"))).thenReturn(new AcceptedInvitation("valid.redirect.com", user));
 
-        MockHttpServletRequestBuilder post = requestPost(mode, "/invitations/accept.do")
+        MockHttpServletRequestBuilder post = post("/invitations/accept.do")
                 .param("password", "password")
                 .param("password_confirmation", "password")
                 .param("code", "thecode");
 
-        String expectedRedirect = mode.redirectPrefix() + "/login?success=invite_accepted&form_redirect_uri=valid.redirect.com";
-        if (mode.redirectPrefix().isEmpty()) {
-            expectedRedirect = "/login?success=invite_accepted&form_redirect_uri=valid.redirect.com";
-        }
         mockMvc.perform(post)
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl(expectedRedirect));
+                .andExpect(redirectedUrl("/login?success=invite_accepted&form_redirect_uri=valid.redirect.com"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteWithInvalidClientRedirect(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInviteWithInvalidClientRedirect() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         UaaPrincipal uaaPrincipal = new UaaPrincipal("user-id-001", "user@example.com", "user@example.com", OriginKeys.UAA, null, zoneId);
         UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(uaaPrincipal, null, UaaAuthority.USER_AUTHORITIES);
@@ -650,21 +596,18 @@ class InvitationsControllerTest {
 
         when(invitationsService.acceptInvitation(anyString(), eq("password"))).thenReturn(new AcceptedInvitation("/home", user));
 
-        MockHttpServletRequestBuilder post = requestPost(mode, "/invitations/accept.do")
+        MockHttpServletRequestBuilder post = post("/invitations/accept.do")
                 .param("code", "thecode")
                 .param("password", "password")
                 .param("password_confirmation", "password");
 
-        String expectedRedirect = mode.redirectPrefix().isEmpty() ? "/login?success=invite_accepted" : mode.redirectPrefix() + "/login?success=invite_accepted";
         mockMvc.perform(post)
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl(expectedRedirect));
+                .andExpect(redirectedUrl("/login?success=invite_accepted"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void invalidCodeOnAcceptPost(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void invalidCodeOnAcceptPost() throws Exception {
         String zoneId = IdentityZoneHolder.get().getId();
         UaaPrincipal uaaPrincipal = new UaaPrincipal("user-id-001", "user@example.com", "user@example.com", OriginKeys.UAA, null, zoneId);
         UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(uaaPrincipal, null, UaaAuthority.USER_AUTHORITIES);
@@ -677,7 +620,7 @@ class InvitationsControllerTest {
 
         doThrow(new HttpClientErrorException(BAD_REQUEST)).when(invitationsService).acceptInvitation(anyString(), anyString());
 
-        MockHttpServletRequestBuilder post = requestPost(mode, "/invitations/accept.do")
+        MockHttpServletRequestBuilder post = post("/invitations/accept.do")
                 .param("code", "thecode")
                 .param("password", "password")
                 .param("password_confirmation", "password");
@@ -688,11 +631,9 @@ class InvitationsControllerTest {
                 .andExpect(view().name("invitations/accept_invite"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteWithoutMatchingPasswords(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
-        MockHttpServletRequestBuilder post = startAcceptInviteFlow(mode, "a", "b");
+    @Test
+    void acceptInviteWithoutMatchingPasswords() throws Exception {
+        MockHttpServletRequestBuilder post = startAcceptInviteFlow("a", "b");
 
         String zoneId = IdentityZoneHolder.get().getId();
         Map<String, String> codeData = getInvitationsCode(OriginKeys.UAA);
@@ -707,22 +648,18 @@ class InvitationsControllerTest {
         IdentityProvider identityProvider = new IdentityProvider<>();
         identityProvider.setType(OriginKeys.UAA);
         when(providerProvisioning.retrieveByOrigin("uaa", "uaa")).thenReturn(identityProvider);
-        // Redirect may include query params (e.g. error_message_code, code) due to model on redirect
-        String redirectPattern = mode.redirectPrefix().isEmpty() ? "accept*" : mode.redirectPrefix() + "/invitations/accept*";
         mockMvc.perform(post)
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrlPattern(redirectPattern))
                 .andExpect(model().attribute("error_message_code", "form_error"))
-                .andExpect(model().attribute("code", "thenewcode2"));
+                .andExpect(model().attribute("code", "thenewcode2"))
+                .andExpect(view().name("redirect:accept"));
         verify(expiringCodeStore).retrieveCode("thecode", zoneId);
         verify(expiringCodeStore, times(2)).generateCode(anyString(), any(), anyString(), eq(zoneId));
         verify(invitationsService, never()).acceptInvitation(anyString(), anyString());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteDisplaysConsentText(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInviteDisplaysConsentText() throws Exception {
         IdentityZone defaultZone = IdentityZoneHolder.get();
         String zoneId = IdentityZoneHolder.get().getId();
         BrandingInformation branding = new BrandingInformation();
@@ -739,17 +676,16 @@ class InvitationsControllerTest {
         when(expiringCodeStore.peekCode("thecode", zoneId))
                 .thenReturn(expiringCode, null);
 
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "thecode"))
+        mockMvc.perform(get("/invitations/accept")
+                        .param("code", "thecode"))
                 .andExpect(content().string(containsString("Jaskanwal")));
 
         // cleanup changes to default zone
         defaultZone.getConfig().setBranding(null);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteDoesNotDisplayConsentCheckboxWhenNotConfiguredForZone(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInviteDoesNotDisplayConsentCheckboxWhenNotConfiguredForZone() throws Exception {
         IdentityProvider identityProvider = new IdentityProvider<>();
         identityProvider.setType(OriginKeys.UAA);
         when(providerProvisioning.retrieveByOrigin(anyString(), anyString())).thenReturn(identityProvider);
@@ -763,14 +699,13 @@ class InvitationsControllerTest {
         when(expiringCodeStore.generateCode(anyString(), any(), eq(INVITATION.name()), eq(zoneId)))
                 .thenReturn(expiringCode);
 
-        mockMvc.perform(requestGet(mode, "/invitations/accept").param("code", "thecode"))
+        mockMvc.perform(get("/invitations/accept")
+                        .param("code", "thecode"))
                 .andExpect(content().string(not(containsString("I agree"))));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteDisplaysErrorMessageIfConsentNotChecked(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInviteDisplaysErrorMessageIfConsentNotChecked() throws Exception {
         IdentityZone defaultZone = IdentityZoneHolder.get();
         String zoneId = IdentityZoneHolder.get().getId();
         BrandingInformation branding = new BrandingInformation();
@@ -791,22 +726,18 @@ class InvitationsControllerTest {
         when(expiringCodeStore.generateCode(anyString(), any(), eq(INVITATION.name()), eq(zoneId)))
                 .thenReturn(expiringCode);
 
-        MvcResult mvcResult = mockMvc.perform(startAcceptInviteFlow(mode, "password", "password"))
+        MvcResult mvcResult = mockMvc.perform(startAcceptInviteFlow("password", "password"))
                 .andReturn();
 
-        String redirectLocation = mvcResult.getResponse().getRedirectedUrl();
-        String followPath = (redirectLocation != null && redirectLocation.startsWith("/")) ? redirectLocation : "/invitations/" + redirectLocation;
-        mockMvc.perform(get(followPath).session((MockHttpSession) mvcResult.getRequest().getSession()))
+        mockMvc.perform(get("/invitations/" + mvcResult.getResponse().getHeader("Location")))
                 .andExpect(model().attribute("error_message_code", "missing_consent"));
 
         // cleanup changes to default zone
         defaultZone.getConfig().setBranding(null);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneRequestPathMode.class)
-    void acceptInviteWorksWithConsentProvided(ZoneRequestPathMode mode) throws Exception {
-        mode.setZone();
+    @Test
+    void acceptInviteWorksWithConsentProvided() throws Exception {
         IdentityZone defaultZone = IdentityZoneHolder.get();
         String zoneId = IdentityZoneHolder.get().getId();
         BrandingInformation branding = new BrandingInformation();
@@ -828,7 +759,7 @@ class InvitationsControllerTest {
         when(invitationsService.acceptInvitation(anyString(), anyString()))
                 .thenReturn(new AcceptedInvitation(codeData.get("redirect_uri"), null));
 
-        MvcResult mvcResult = mockMvc.perform(startAcceptInviteFlow(mode, "password", "password")
+        MvcResult mvcResult = mockMvc.perform(startAcceptInviteFlow("password", "password")
                         .param("does_user_consent", "true"))
                 .andReturn();
         assertThat(mvcResult.getResponse().getHeader("Location")).contains(codeData.get("redirect_uri"));

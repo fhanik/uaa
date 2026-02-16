@@ -3,7 +3,8 @@ package org.cloudfoundry.identity.uaa.ratelimiting;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtilsZonePath;
+import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.AfterEach;
@@ -56,7 +57,7 @@ public class RateLimitingFilterZoneResolutionMockMvcTest {
     @ParameterizedTest
     @EnumSource(ZoneResolutionMode.class)
     void happyTokenPathWithoutSlash(ZoneResolutionMode mode) throws Exception {
-        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "adminsecret", "uaa.admin", subdomain, false);
+        String adminToken = MockMvcUtilsZonePath.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "adminsecret", "uaa.admin", subdomain, false);
         mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/RateLimitingStatus")
                 .header("Authorization", "Bearer " + adminToken)
                 .accept(APPLICATION_JSON))
@@ -66,7 +67,7 @@ public class RateLimitingFilterZoneResolutionMockMvcTest {
     @ParameterizedTest
     @EnumSource(ZoneResolutionMode.class)
     void happyTokenPathWithSlash(ZoneResolutionMode mode) throws Exception {
-        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "adminsecret", "uaa.admin", subdomain, false);
+        String adminToken = MockMvcUtilsZonePath.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "adminsecret", "uaa.admin", subdomain, false);
         mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/RateLimitingStatus/")
                 .header("Authorization", "Bearer " + adminToken)
                 .accept(APPLICATION_JSON))
@@ -76,7 +77,7 @@ public class RateLimitingFilterZoneResolutionMockMvcTest {
     @ParameterizedTest
     @EnumSource(ZoneResolutionMode.class)
     void happyBasicAuthPathWithoutSlash(ZoneResolutionMode mode) throws Exception {
-        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "adminsecret", "uaa.admin", subdomain, false);
+        String adminToken = MockMvcUtilsZonePath.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "adminsecret", "uaa.admin", subdomain, false);
         mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/RateLimitingStatus")
                 .header("Authorization", "Bearer " + adminToken)
                 .accept(APPLICATION_JSON))

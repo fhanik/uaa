@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.event.TokenRevocationEvent;
 import org.cloudfoundry.identity.uaa.oauth.jwt.Jwt;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtHelper;
@@ -15,12 +14,8 @@ import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.dao.EmptyResultDataAccessException;
-import org.springframework.http.HttpMethod;
 import org.springframework.web.context.support.GenericWebApplicationContext;
 
 import java.util.Collections;
@@ -32,7 +27,6 @@ import static org.assertj.core.api.Assertions.fail;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.getClientCredentialsOAuthAccessToken;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.getUserOAuthAccessToken;
 import static org.hamcrest.Matchers.containsString;
-import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -644,31 +638,5 @@ class TokenRevocationEndpointMockMvcTest extends AbstractTokenMockMvcTests {
         scimUser.setEmails(Collections.singletonList(email));
         scimUser.setOrigin(OriginKeys.UAA);
         return jdbcScimUserProvisioning.createUser(scimUser, "secret", IdentityZoneHolder.get().getId());
-    }
-
-    @Nested
-    class TokenRevokeZonePathSupport {
-
-        @ParameterizedTest
-        @EnumSource(ZoneResolutionMode.class)
-        void revoke_client_tokens_via_zone_path(ZoneResolutionMode mode) throws Exception {
-            String subdomain = "revokezone" + generator.generate().toLowerCase();
-            String resourceClientId = "revoke-resource-" + generator.generate();
-            IdentityZone testZone = setupIdentityZone(subdomain);
-            IdentityZoneHolder.set(testZone);
-            try {
-                setupIdentityProvider(OriginKeys.UAA);
-                setUpClients("admin", "uaa.admin", "uaa.admin", "client_credentials", true, null, null, -1, testZone);
-                setUpClients(resourceClientId, "openid", "openid", "client_credentials", true, null, null, -1, testZone);
-            } finally {
-                IdentityZoneHolder.clear();
-            }
-
-            String zoneAdminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", SECRET, null, subdomain, false);
-
-            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/token/revoke/client/" + resourceClientId)
-                            .header("Authorization", "Bearer " + zoneAdminToken))
-                    .andExpect(status().isOk());
-        }
     }
 }

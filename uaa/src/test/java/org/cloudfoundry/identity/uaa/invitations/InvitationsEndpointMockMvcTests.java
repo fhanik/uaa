@@ -7,8 +7,6 @@ import org.cloudfoundry.identity.uaa.codestore.ExpiringCode;
 import org.cloudfoundry.identity.uaa.codestore.ExpiringCodeStore;
 import org.cloudfoundry.identity.uaa.codestore.ExpiringCodeType;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.IdentityZoneCreationResult;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.common.util.OAuth2Utils;
 import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
@@ -22,7 +20,6 @@ import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
-import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneProvisioning;
 import org.cloudfoundry.identity.uaa.zone.MultitenantJdbcClientDetailsService;
 import org.flywaydb.core.internal.util.StringUtils;
@@ -32,10 +29,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -125,84 +120,12 @@ class InvitationsEndpointMockMvcTests {
         assertResponseAndCodeCorrect(expiringCodeStore, new String[]{email}, redirectUrl, null, response, clientDetails);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void inviteUserWithClientCredentialsWithinZone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        ClientDetails zonedClientDetails = MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String zonedToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, zonedClientId, zonedClientSecret, "scim.read scim.invite", subdomain, false);
-
-        String email = "user1@example.com";
-        String redirectUrl = "example.com";
-        InvitationsRequest invitations = new InvitationsRequest(new String[]{email});
-        String requestBody = writeValueAsString(invitations);
-
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, redirectUrl)
-                .header("Authorization", "Bearer " + zonedToken)
-                .contentType(APPLICATION_JSON)
-                .content(requestBody);
-
-        MvcResult mvcResult = mockMvc.perform(post)
-                .andExpect(status().isOk())
-                .andReturn();
-
-        InvitationsResponse response = readValue(mvcResult.getResponse().getContentAsString(), InvitationsResponse.class);
-        assertResponseAndCodeCorrect(expiringCodeStore, new String[]{email}, redirectUrl, mode, zoneResult.getIdentityZone(), response, zonedClientDetails);
-    }
-
     @Test
     void inviteMultipleUsersWithClientCredentials() throws Exception {
         String[] emails = new String[]{"user1@" + emailDomain, "user2@" + emailDomain};
         String redirectUri = "example.com";
         InvitationsResponse response = sendRequestWithTokenAndReturnResponse(webApplicationContext, mockMvc, scimInviteToken, null, clientId, redirectUri, emails);
         assertResponseAndCodeCorrect(expiringCodeStore, emails, redirectUri, null, response, clientDetails);
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void inviteMultipleUsersWithClientCredentialsWithinZone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        ClientDetails zonedClientDetails = MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String zonedToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, zonedClientId, zonedClientSecret, "scim.read scim.invite", subdomain, false);
-
-        String[] emails = new String[]{"user1@" + emailDomain, "user2@" + emailDomain};
-        String redirectUrl = "example.com";
-        InvitationsRequest invitations = new InvitationsRequest(emails);
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, redirectUrl)
-                .header("Authorization", "Bearer " + zonedToken)
-                .contentType(APPLICATION_JSON)
-                .content(writeValueAsString(invitations));
-
-        MvcResult mvcResult = mockMvc.perform(post)
-                .andExpect(status().isOk())
-                .andReturn();
-
-        InvitationsResponse response = readValue(mvcResult.getResponse().getContentAsString(), InvitationsResponse.class);
-        assertResponseAndCodeCorrect(expiringCodeStore, emails, redirectUrl, mode, zoneResult.getIdentityZone(), response, zonedClientDetails);
     }
 
     @Test
@@ -212,41 +135,6 @@ class InvitationsEndpointMockMvcTests {
         String userToken = MockMvcUtils.getScimInviteUserToken(mockMvc, clientId, clientSecret, null, "admin", "adminsecret");
         InvitationsResponse response = sendRequestWithTokenAndReturnResponse(webApplicationContext, mockMvc, userToken, null, clientId, redirectUri, email);
         assertResponseAndCodeCorrect(expiringCodeStore, new String[]{email}, redirectUri, null, response, clientDetails);
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void inviteUserWithUserCredentialsWithinZone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        ClientDetails zonedClientDetails = MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String userToken = MockMvcUtils.getScimInviteUserToken(mockMvc, zonedClientId, zonedClientSecret, zoneResult.getIdentityZone(), "admin", "admin-secret");
-
-        String email = "user1@example.com";
-        String redirectUrl = "example.com";
-        InvitationsRequest invitations = new InvitationsRequest(new String[]{email});
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, redirectUrl)
-                .header("Authorization", "Bearer " + userToken)
-                .contentType(APPLICATION_JSON)
-                .content(writeValueAsString(invitations));
-
-        MvcResult mvcResult = mockMvc.perform(post)
-                .andExpect(status().isOk())
-                .andReturn();
-
-        InvitationsResponse response = readValue(mvcResult.getResponse().getContentAsString(), InvitationsResponse.class);
-        assertResponseAndCodeCorrect(expiringCodeStore, new String[]{email}, redirectUrl, mode, zoneResult.getIdentityZone(), response, zonedClientDetails);
     }
 
     @Nested
@@ -482,53 +370,6 @@ class InvitationsEndpointMockMvcTests {
         assertThat(response.getFailedInvites().getFirst().getErrorCode()).isEqualTo("user.ambiguous");
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void multipleUsersEmailExistsWithOneOriginWithinZone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String zoneAdminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(ZoneResolutionMode.SUBDOMAIN, mockMvc, "admin", "admin-secret", "scim.read scim.write", subdomain, false);
-        String username1 = generator.generate();
-        String username2 = generator.generate();
-        String email = generator.generate().toLowerCase() + "@" + emailDomain;
-        ScimUser user1 = new ScimUser(null, username1, "givenName", "familyName");
-        user1.setPrimaryEmail(email);
-        user1.setOrigin(UAA);
-        user1.setPassword("password");
-        MockMvcUtils.createUserInZone(mockMvc, zoneAdminToken, user1, subdomain);
-        ScimUser user2 = new ScimUser(null, username2, "givenName", "familyName");
-        user2.setPrimaryEmail(email);
-        user2.setOrigin(UAA);
-        user2.setPassword("password");
-        MockMvcUtils.createUserInZone(mockMvc, zoneAdminToken, user2, subdomain);
-
-        String userToken = MockMvcUtils.getScimInviteUserToken(mockMvc, zonedClientId, zonedClientSecret, zoneResult.getIdentityZone(), "admin", "admin-secret");
-
-        InvitationsRequest invitations = new InvitationsRequest(new String[]{email});
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, "example.com")
-                .header("Authorization", "Bearer " + userToken)
-                .contentType(APPLICATION_JSON)
-                .content(writeValueAsString(invitations));
-
-        MvcResult mvcResult = mockMvc.perform(post).andExpect(status().isOk()).andReturn();
-        InvitationsResponse response = readValue(mvcResult.getResponse().getContentAsString(), InvitationsResponse.class);
-        assertThat(response.getNewInvites()).isEmpty();
-        assertThat(response.getFailedInvites()).hasSize(1);
-        assertThat(response.getFailedInvites().getFirst().getErrorCode()).isEqualTo("user.ambiguous");
-    }
-
     @Test
     void inviteUserWithInvalidEmails() throws Exception {
         String invalidEmail1 = "user1example.";
@@ -547,90 +388,9 @@ class InvitationsEndpointMockMvcTests {
         assertThat(response.getFailedInvites().get(2).getErrorMessage()).isEqualTo("No authentication provider found.");
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void inviteUserWithInvalidEmailsWithinZone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String zonedToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, zonedClientId, zonedClientSecret, "scim.read scim.invite", subdomain, false);
-
-        String invalidEmail1 = "user1example.";
-        String invalidEmail2 = "user1example@";
-        String invalidEmail3 = "user1example@invalid";
-        String redirectUrl = "test.com";
-        InvitationsRequest invitations = new InvitationsRequest(new String[]{invalidEmail1, invalidEmail2, invalidEmail3});
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, redirectUrl)
-                .header("Authorization", "Bearer " + zonedToken)
-                .contentType(APPLICATION_JSON)
-                .content(writeValueAsString(invitations));
-
-        MvcResult mvcResult = mockMvc.perform(post).andExpect(status().isOk()).andReturn();
-        InvitationsResponse response = readValue(mvcResult.getResponse().getContentAsString(), InvitationsResponse.class);
-        assertThat(response.getNewInvites()).isEmpty();
-        assertThat(response.getFailedInvites()).hasSize(3);
-        assertThat(response.getFailedInvites().getFirst().getErrorCode()).isEqualTo("email.invalid");
-        assertThat(response.getFailedInvites().get(1).getErrorCode()).isEqualTo("email.invalid");
-        assertThat(response.getFailedInvites().get(2).getErrorCode()).isEqualTo("provider.non-existent");
-        assertThat(response.getFailedInvites().getFirst().getErrorMessage()).isEqualTo(invalidEmail1 + " is invalid email.");
-        assertThat(response.getFailedInvites().get(1).getErrorMessage()).isEqualTo(invalidEmail2 + " is invalid email.");
-        assertThat(response.getFailedInvites().get(2).getErrorMessage()).isEqualTo("No authentication provider found.");
-    }
-
     @Test
     void acceptInvitationEmailWithDefaultCompanyName() throws Exception {
         mockMvc.perform(get(getAcceptInvitationLink(webApplicationContext, mockMvc, clientId, clientSecret, generator, emailDomain, null, "admin", "adminsecret")))
-                .andExpect(content().string(containsString("Create your account")))
-                .andExpect(content().string(containsString("Create account")));
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void acceptInvitationEmailWithDefaultCompanyNameWithinZone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String zonedToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, zonedClientId, zonedClientSecret, "scim.read scim.invite", subdomain, false);
-
-        String email = generator.generate().toLowerCase() + "@" + emailDomain;
-        InvitationsRequest invitations = new InvitationsRequest(new String[]{email});
-        MockHttpServletRequestBuilder postReq = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, "example.com")
-                .header("Authorization", "Bearer " + zonedToken)
-                .contentType(APPLICATION_JSON)
-                .content(writeValueAsString(invitations));
-        MvcResult inviteResult = mockMvc.perform(postReq).andExpect(status().isOk()).andReturn();
-        InvitationsResponse inviteResponse = readValue(inviteResult.getResponse().getContentAsString(), InvitationsResponse.class);
-        assertThat(inviteResponse.getNewInvites()).hasSize(1);
-        String acceptUrl = inviteResponse.getNewInvites().get(0).getInviteLink().toString();
-        String code = acceptUrl.contains("code=") ? acceptUrl.substring(acceptUrl.indexOf("code=") + 5).split("&")[0] : null;
-        assertThat(code).isNotNull();
-
-        MockHttpServletRequestBuilder accept = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/invitations/accept")
-                .param("code", code);
-        mockMvc.perform(accept)
-                .andExpect(status().isOk())
                 .andExpect(content().string(containsString("Create your account")))
                 .andExpect(content().string(containsString("Create account")));
     }
@@ -657,94 +417,22 @@ class InvitationsEndpointMockMvcTests {
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void acceptInvitationEmailWithCompanyNameWithinZone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-
-        BrandingInformation branding = new BrandingInformation();
-        branding.setCompanyName("Best Company");
-        IdentityZoneConfiguration config = new IdentityZoneConfiguration();
-        config.setBranding(branding);
-        config.setTokenPolicy(IdentityZoneHolder.getUaaZone().getConfig().getTokenPolicy());
-        zoneResult.getIdentityZone().setConfig(config);
-        identityZoneProvisioning.update(zoneResult.getIdentityZone());
-
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String zonedToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, zonedClientId, zonedClientSecret, "scim.read scim.invite", subdomain, false);
-
-        String email = generator.generate().toLowerCase() + "@" + emailDomain;
-        InvitationsRequest invitations = new InvitationsRequest(new String[]{email});
-        MockHttpServletRequestBuilder postReq = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, "example.com")
-                .header("Authorization", "Bearer " + zonedToken)
-                .contentType(APPLICATION_JSON)
-                .content(writeValueAsString(invitations));
-        MvcResult inviteResult = mockMvc.perform(postReq).andExpect(status().isOk()).andReturn();
-        InvitationsResponse inviteResponse = readValue(inviteResult.getResponse().getContentAsString(), InvitationsResponse.class);
-        assertThat(inviteResponse.getNewInvites()).hasSize(1);
-        String acceptUrl = inviteResponse.getNewInvites().get(0).getInviteLink().toString();
-        String code = acceptUrl.contains("code=") ? acceptUrl.substring(acceptUrl.indexOf("code=") + 5).split("&")[0] : null;
-        assertThat(code).isNotNull();
-
-        MockHttpServletRequestBuilder accept = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/invitations/accept")
-                .param("code", code);
-        mockMvc.perform(accept)
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("Best Company")))
-                .andExpect(content().string(containsString("Create your account")));
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void invitationsAcceptGetSecurity(ZoneResolutionMode mode, @Autowired JdbcTemplate jdbcTemplate) throws Exception {
+    @Test
+    void invitationsAcceptGetSecurity(@Autowired JdbcTemplate jdbcTemplate) throws Exception {
         jdbcTemplate.update("DELETE FROM expiring_code_store");
 
-        String subdomain = generator.generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
+        String userToken = MockMvcUtils.getScimInviteUserToken(mockMvc, clientId, clientSecret, null, "admin", "adminsecret");
+        sendRequestWithToken(webApplicationContext, mockMvc, userToken, clientId, "user1@" + emailDomain);
 
-        String zonedClientId = generator.generate().toLowerCase();
-        String zonedClientSecret = generator.generate().toLowerCase();
-        MockMvcUtils.createClient(mockMvc, zoneResult.getZoneAdminToken(), zonedClientId, zonedClientSecret,
-                Collections.singleton("oauth"), Arrays.asList("scim.read", "scim.invite"), Arrays.asList("client_credentials", "password"),
-                "scim.read,scim.invite", Collections.singleton("http://redirect.url"), zoneResult.getIdentityZone());
-
-        String zonedToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, zonedClientId, zonedClientSecret, "scim.read scim.invite", subdomain, false);
-
-        InvitationsRequest invitations = new InvitationsRequest(new String[]{"user1@" + emailDomain});
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/invite_users")
-                .param(OAuth2Utils.CLIENT_ID, zonedClientId)
-                .param(OAuth2Utils.REDIRECT_URI, "example.com")
-                .header("Authorization", "Bearer " + zonedToken)
-                .contentType(APPLICATION_JSON)
-                .content(writeValueAsString(invitations));
-        mockMvc.perform(post).andExpect(status().isOk());
-
-        String code = jdbcTemplate.queryForObject("SELECT code FROM expiring_code_store WHERE identity_zone_id = ?", String.class, zoneResult.getIdentityZone().getId());
+        String code = jdbcTemplate.queryForObject("SELECT code FROM expiring_code_store", String.class);
         assertThat(code).as("Invite Code Must be Present").isNotNull();
 
-        MockHttpServletRequestBuilder accept = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/invitations/accept")
+        MockHttpServletRequestBuilder accept = get("/invitations/accept")
                 .param("code", code);
 
-        String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH
-                ? "<form action=\"/z/" + subdomain + "/invitations/accept.do\""
-                : "<form action=\"/invitations/accept.do\"";
         mockMvc.perform(accept)
                 .andExpect(status().isOk())
-                .andExpect(content().string(containsString(expectedFormAction)));
+                .andExpect(content().string(containsString("<form action=\"/invitations/accept.do\" method=\"post\" novalidate=\"novalidate\">")));
     }
 
     private static InvitationsResponse sendRequestWithTokenAndReturnResponse(WebApplicationContext webApplicationContext,
@@ -765,25 +453,6 @@ class InvitationsEndpointMockMvcTests {
     }
 
     private static void assertResponseAndCodeCorrect(ExpiringCodeStore expiringCodeStore, String[] emails, String redirectUrl, IdentityZone zone, InvitationsResponse response, ClientDetails clientDetails) {
-        String expectedLinkPrefix = (zone != null && StringUtils.hasText(zone.getSubdomain()))
-                ? "http://" + zone.getSubdomain() + ".localhost/invitations/accept"
-                : "http://localhost/invitations/accept";
-        assertResponseAndCodeCorrect(expiringCodeStore, emails, redirectUrl, expectedLinkPrefix, zone, response, clientDetails);
-    }
-
-    private static void assertResponseAndCodeCorrect(ExpiringCodeStore expiringCodeStore, String[] emails, String redirectUrl, ZoneResolutionMode mode, IdentityZone zone, InvitationsResponse response, ClientDetails clientDetails) {
-        String expectedLinkPrefix;
-        if (zone == null || !StringUtils.hasText(zone.getSubdomain())) {
-            expectedLinkPrefix = "http://localhost/invitations/accept";
-        } else if (mode == ZoneResolutionMode.ZONE_PATH) {
-            expectedLinkPrefix = "http://localhost/z/" + zone.getSubdomain() + "/invitations/accept";
-        } else {
-            expectedLinkPrefix = "http://" + zone.getSubdomain() + ".localhost/invitations/accept";
-        }
-        assertResponseAndCodeCorrect(expiringCodeStore, emails, redirectUrl, expectedLinkPrefix, zone, response, clientDetails);
-    }
-
-    private static void assertResponseAndCodeCorrect(ExpiringCodeStore expiringCodeStore, String[] emails, String redirectUrl, String expectedLinkPrefix, IdentityZone zone, InvitationsResponse response, ClientDetails clientDetails) {
         for (int i = 0; i < emails.length; i++) {
             assertThat(response.getNewInvites()).hasSameSizeAs(emails);
             assertThat(response.getNewInvites().get(i).getEmail()).isEqualTo(emails[i]);
@@ -794,9 +463,11 @@ class InvitationsEndpointMockMvcTests {
             String link = response.getNewInvites().get(i).getInviteLink().toString();
             assertThat(contains(link, "@")).isFalse();
             assertThat(contains(link, "%40")).isFalse();
-            assertThat(link).startsWith(expectedLinkPrefix);
-            if (zone != null) {
+            if (zone != null && StringUtils.hasText(zone.getSubdomain())) {
+                assertThat(link).startsWith("http://" + zone.getSubdomain() + ".localhost/invitations/accept");
                 IdentityZoneHolder.set(zone);
+            } else {
+                assertThat(link).startsWith("http://localhost/invitations/accept");
             }
 
             String query = response.getNewInvites().get(i).getInviteLink().getQuery();

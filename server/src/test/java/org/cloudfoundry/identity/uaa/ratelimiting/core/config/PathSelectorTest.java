@@ -46,23 +46,10 @@ class PathSelectorTest {
         checkOK("equals  :  /login", PathMatchType.Equals, "/login"); // w/ extraneous spaces ignored
         checkOK("StartsWith:/login", PathMatchType.StartsWith, "/login");
         checkOK("Contains:/login", PathMatchType.Contains, "/login");
-        checkOK("pathPattern:/Users/*", PathMatchType.PathPattern, "/Users/*");
-        checkOK("pathPattern:/Users/{id}", PathMatchType.PathPattern, "/Users/{id}");
-        checkOK("pathPattern:/oauth/**", PathMatchType.PathPattern, "/oauth/**");
-        checkOK("pathPattern:/z/{subdomain}/login", PathMatchType.PathPattern, "/z/{subdomain}/login");
-        checkOK("pathPattern:/z/{subdomain}/Users/**", PathMatchType.PathPattern, "/z/{subdomain}/Users/**");
         checkOK("Other", PathMatchType.Other, "");
         checkOK("Other:", PathMatchType.Other, "");
         checkOK("All", PathMatchType.All, "");
         checkOK("All:", PathMatchType.All, "");
-    }
-
-    @Test
-    void parse_pathPattern_invalid() {
-        checkException(0, "pathPattern:");
-        checkException(0, "pathPattern:  ");
-        checkException(0, "pathPattern:login");
-        checkException(0, "pathPattern:Users/123");
     }
 
     private PathSelector check(int offsetIndex, String selectorStr) {
@@ -110,16 +97,14 @@ class PathSelectorTest {
                 "equals:/login",
                 "StartsWith:/login",
                 "Contains:/login",
-                "pathPattern:/Users/*",
                 "Other",
                 "All"));
-        assertThat(ps).hasSize(6);
+        assertThat(ps).hasSize(5);
         checkOK(ps, 0, PathMatchType.Equals, "/login");
         checkOK(ps, 1, PathMatchType.StartsWith, "/login");
         checkOK(ps, 2, PathMatchType.Contains, "/login");
-        checkOK(ps, 3, PathMatchType.PathPattern, "/Users/*");
-        checkOK(ps, 4, PathMatchType.Other, "");
-        checkOK(ps, 5, PathMatchType.All, "");
+        checkOK(ps, 3, PathMatchType.Other, "");
+        checkOK(ps, 4, PathMatchType.All, "");
     }
 
     private void checkOK(List<PathSelector> selectors, int offsetIndex, PathMatchType type, String path) {

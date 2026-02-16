@@ -13,15 +13,10 @@ import org.cloudfoundry.identity.uaa.user.UaaAuthority;
 import org.cloudfoundry.identity.uaa.user.UaaUser;
 import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
 import org.cloudfoundry.identity.uaa.util.beans.TestBuildInfo;
-import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
-import org.cloudfoundry.identity.uaa.zone.MultitenancyFixture;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -68,13 +63,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringJUnitConfig(classes = ChangeEmailControllerTest.ContextConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 class ChangeEmailControllerTest {
-    /** Whether the test uses the default path or the zone path prefix {@code /z/{subdomain}/}. */
-    enum RequestPathMode {
-        DEFAULT,
-        ZONE_PATH
-    }
-
-    private static final String ZONE_PATH_SUBDOMAIN = "testsubdomain";
 
     private MockMvc mockMvc;
     @Autowired
@@ -87,32 +75,14 @@ class ChangeEmailControllerTest {
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
-        IdentityZoneHolder.set(IdentityZone.getUaa());
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     }
 
-    @AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-        IdentityZoneHolder.set(IdentityZone.getUaa());
-    }
-
-    private String pathPrefixFor(RequestPathMode mode) {
-        if (mode == RequestPathMode.ZONE_PATH) {
-            IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", ZONE_PATH_SUBDOMAIN);
-            IdentityZoneHolder.set(zone);
-            return "/z/" + ZONE_PATH_SUBDOMAIN;
-        }
-        return "";
-    }
-
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void changeEmailPage(RequestPathMode mode) throws Exception {
+    @Test
+    void changeEmailPage() throws Exception {
         setupSecurityContext();
-        String pathPrefix = pathPrefixFor(mode);
 
-        mockMvc.perform(get(pathPrefix + "/change_email").param("client_id", "client-id").param("redirect_uri", "http://example.com/redirect"))
+        mockMvc.perform(get("/change_email").param("client_id", "client-id").param("redirect_uri", "http://example.com/redirect"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("change_email"))
                 .andExpect(model().attribute("email", "user@example.com"))
@@ -122,13 +92,11 @@ class ChangeEmailControllerTest {
                 .andExpect(xpath("//*[@type='hidden' and @value='http://example.com/redirect']").exists());
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void changeEmail(RequestPathMode mode) throws Exception {
+    @Test
+    void changeEmail() throws Exception {
         setupSecurityContext();
-        String pathPrefix = pathPrefixFor(mode);
 
-        MockHttpServletRequestBuilder post = post(pathPrefix + "/change_email.do")
+        MockHttpServletRequestBuilder post = post("/change_email.do")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("newEmail", "new@example.com")
                 .param("client_id", "app");
@@ -140,13 +108,11 @@ class ChangeEmailControllerTest {
         verify(changeEmailService).beginEmailChange("user-id-001", "bob", "new@example.com", "app", null);
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void changeEmailWithClientIdAndRedirectUri(RequestPathMode mode) throws Exception {
+    @Test
+    void changeEmailWithClientIdAndRedirectUri() throws Exception {
         setupSecurityContext();
-        String pathPrefix = pathPrefixFor(mode);
 
-        MockHttpServletRequestBuilder post = post(pathPrefix + "/change_email.do")
+        MockHttpServletRequestBuilder post = post("/change_email.do")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("newEmail", "new@example.com")
                 .param("client_id", "app")
@@ -159,15 +125,13 @@ class ChangeEmailControllerTest {
         verify(changeEmailService).beginEmailChange("user-id-001", "bob", "new@example.com", "app", "http://redirect.uri");
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void changeEmailWithUsernameConflict(RequestPathMode mode) throws Exception {
+    @Test
+    void changeEmailWithUsernameConflict() throws Exception {
         setupSecurityContext();
-        String pathPrefix = pathPrefixFor(mode);
 
         doThrow(new UaaException("username already exists", 409)).when(changeEmailService).beginEmailChange("user-id-001", "bob", "new@example.com", "", null);
 
-        MockHttpServletRequestBuilder post = post(pathPrefix + "/change_email.do")
+        MockHttpServletRequestBuilder post = post("/change_email.do")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("newEmail", "new@example.com")
                 .param("client_id", "");
@@ -179,10 +143,8 @@ class ChangeEmailControllerTest {
                 .andExpect(model().attribute("email", "user@example.com"));
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void nonUAAOriginUser(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void nonUAAOriginUser() throws Exception {
         Authentication authentication = new UaaAuthentication(
                 new UaaPrincipal("user-id-001", "bob", "user@example.com", "NON-UAA-origin ", null, IdentityZoneHolder.get().getId()),
                 Collections.singletonList(UaaAuthority.UAA_USER),
@@ -190,7 +152,7 @@ class ChangeEmailControllerTest {
         );
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        MockHttpServletRequestBuilder post = post(pathPrefix + "/change_email.do")
+        MockHttpServletRequestBuilder post = post("/change_email.do")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("newEmail", "new@example.com")
                 .param("client_id", "app");
@@ -202,13 +164,11 @@ class ChangeEmailControllerTest {
         Mockito.verifyNoInteractions(changeEmailService);
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void invalidEmail(RequestPathMode mode) throws Exception {
+    @Test
+    void invalidEmail() throws Exception {
         setupSecurityContext();
-        String pathPrefix = pathPrefixFor(mode);
 
-        MockHttpServletRequestBuilder post = post(pathPrefix + "/change_email.do")
+        MockHttpServletRequestBuilder post = post("/change_email.do")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("newEmail", "invalid")
                 .param("client_id", "app");
@@ -220,10 +180,8 @@ class ChangeEmailControllerTest {
                 .andExpect(model().attribute("email", "user@example.com"));
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void verifyEmail(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void verifyEmail() throws Exception {
         UaaUser user = new UaaUser("user-id-001", "new@example.com", "password", "new@example.com", Collections.<GrantedAuthority>emptyList(), "name", "name", null, null, OriginKeys.UAA, null, true, IdentityZoneHolder.get().getId(), "user-id-001", null);
         when(uaaUserDatabase.retrieveUserById(anyString())).thenReturn(user);
 
@@ -233,7 +191,7 @@ class ChangeEmailControllerTest {
         response.put("email", "new@example.com");
         when(changeEmailService.completeVerification("the_secret_code")).thenReturn(response);
 
-        MockHttpServletRequestBuilder get = get(pathPrefix + "/verify_email")
+        MockHttpServletRequestBuilder get = get("/verify_email")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("code", "the_secret_code");
 
@@ -242,10 +200,8 @@ class ChangeEmailControllerTest {
                 .andExpect(redirectedUrl("login?success=change_email_success"));
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void verifyEmailWhenAuthenticated(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void verifyEmailWhenAuthenticated() throws Exception {
         UaaUser user = new UaaUser("user-id-001", "new@example.com", "password", "new@example.com", Collections.<GrantedAuthority>emptyList(), "name", "name", null, null, OriginKeys.UAA, null, true, IdentityZoneHolder.get().getId(), "user-id-001", null);
         when(uaaUserDatabase.retrieveUserById(anyString())).thenReturn(user);
 
@@ -257,7 +213,7 @@ class ChangeEmailControllerTest {
 
         setupSecurityContext();
 
-        MockHttpServletRequestBuilder get = get(pathPrefix + "/verify_email")
+        MockHttpServletRequestBuilder get = get("/verify_email")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("code", "the_secret_code");
 
@@ -271,10 +227,8 @@ class ChangeEmailControllerTest {
         assertThat(principal.getEmail()).isEqualTo("new@example.com");
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void verifyEmailWithRedirectUrl(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void verifyEmailWithRedirectUrl() throws Exception {
         UaaUser user = new UaaUser("user-id-001", "new@example.com", "password", "new@example.com", Collections.<GrantedAuthority>emptyList(), "name", "name", null, null, OriginKeys.UAA, null, true, IdentityZoneHolder.get().getId(), "user-id-001", null);
         when(uaaUserDatabase.retrieveUserById(anyString())).thenReturn(user);
 
@@ -285,7 +239,7 @@ class ChangeEmailControllerTest {
         response.put("redirect_url", "//example.com/callback");
         when(changeEmailService.completeVerification("the_secret_code")).thenReturn(response);
 
-        MockHttpServletRequestBuilder get = get(pathPrefix + "/verify_email")
+        MockHttpServletRequestBuilder get = get("/verify_email")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("code", "the_secret_code");
 
@@ -294,10 +248,8 @@ class ChangeEmailControllerTest {
                 .andExpect(redirectedUrl("login?success=change_email_success&form_redirect_uri=//example.com/callback"));
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void verifyEmailWithRedirectWhenAuthenticated(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void verifyEmailWithRedirectWhenAuthenticated() throws Exception {
         UaaUser user = new UaaUser("user-id-001", "new@example.com", "password", "new@example.com", Collections.<GrantedAuthority>emptyList(), "name", "name", null, null, OriginKeys.UAA, null, true, IdentityZoneHolder.get().getId(), "user-id-001", null);
         when(uaaUserDatabase.retrieveUserById(anyString())).thenReturn(user);
 
@@ -310,7 +262,7 @@ class ChangeEmailControllerTest {
 
         setupSecurityContext();
 
-        MockHttpServletRequestBuilder get = get(pathPrefix + "/verify_email")
+        MockHttpServletRequestBuilder get = get("/verify_email")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("code", "the_secret_code");
 
@@ -325,10 +277,8 @@ class ChangeEmailControllerTest {
 
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void verifyEmailWithInvalidCode(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void verifyEmailWithInvalidCode() throws Exception {
         Authentication authentication = new AnonymousAuthenticationToken(
                 "anon",
                 "anonymousUser",
@@ -337,7 +287,7 @@ class ChangeEmailControllerTest {
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         when(changeEmailService.completeVerification("the_secret_code")).thenThrow(new UaaException("Bad Request", 400));
-        MockHttpServletRequestBuilder get = get(pathPrefix + "/verify_email")
+        MockHttpServletRequestBuilder get = get("/verify_email")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("code", "the_secret_code");
 
@@ -347,17 +297,13 @@ class ChangeEmailControllerTest {
 
         setupSecurityContext();
 
-        mockMvc.perform(get(pathPrefix + "/verify_email")
-                        .contentType(APPLICATION_FORM_URLENCODED)
-                        .param("code", "the_secret_code"))
+        mockMvc.perform(get)
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("profile?error_message_code=email_change.invalid_code"));
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void verifyEmailWhenAutheticatedAsOtherUser(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void verifyEmailWhenAutheticatedAsOtherUser() throws Exception {
         UaaUser user = new UaaUser("user-id-002", "new2@example.com", "password", "new2@example.com", Collections.<GrantedAuthority>emptyList(), "name", "name", null, null, OriginKeys.UAA, null, true, IdentityZoneHolder.get().getId(), "user-id-002", null);
         when(uaaUserDatabase.retrieveUserById(anyString())).thenReturn(user);
 
@@ -369,7 +315,7 @@ class ChangeEmailControllerTest {
 
         setupSecurityContext();
 
-        MockHttpServletRequestBuilder get = get(pathPrefix + "/verify_email")
+        MockHttpServletRequestBuilder get = get("/verify_email")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("code", "the_secret_code");
 
@@ -383,10 +329,8 @@ class ChangeEmailControllerTest {
         assertThat(principal.getEmail()).isEqualTo("user@example.com");
     }
 
-    @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void verifyEmailDoesNotDeleteAuthenticationMethods(RequestPathMode mode) throws Exception {
-        String pathPrefix = pathPrefixFor(mode);
+    @Test
+    void verifyEmailDoesNotDeleteAuthenticationMethods() throws Exception {
         UaaUser user = new UaaUser("user-id-001", "new@example.com", "password", "new@example.com", Collections.<GrantedAuthority>emptyList(), "name", "name", null, null, OriginKeys.UAA, null, true, IdentityZoneHolder.get().getId(), "user-id-001", null);
         when(uaaUserDatabase.retrieveUserById(anyString())).thenReturn(user);
 
@@ -400,7 +344,7 @@ class ChangeEmailControllerTest {
         UaaAuthentication authentication = (UaaAuthentication) SecurityContextHolder.getContext().getAuthentication();
         authentication.setAuthenticationMethods(Collections.singleton("pwd"));
 
-        MockHttpServletRequestBuilder get = get(pathPrefix + "/verify_email")
+        MockHttpServletRequestBuilder get = get("/verify_email")
                 .contentType(APPLICATION_FORM_URLENCODED)
                 .param("code", "the_secret_code");
 

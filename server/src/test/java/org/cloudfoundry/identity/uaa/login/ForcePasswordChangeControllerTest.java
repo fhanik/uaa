@@ -5,14 +5,11 @@ import org.cloudfoundry.identity.uaa.account.ResetPasswordService;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
 import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
-import org.cloudfoundry.identity.uaa.zone.IdentityZone;
-import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManagerImpl;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.core.io.support.ResourcePropertySource;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -36,21 +33,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringJUnitConfig(classes = {ThymeleafAdditional.class, ThymeleafConfig.class})
 class ForcePasswordChangeControllerTest extends TestClassNullifier {
 
-    /** Whether the test uses the default path or the zone path prefix {@code /z/{subdomain}/}. */
-    enum RequestPathMode {
-        DEFAULT,
-        ZONE_PATH
-    }
-
-    private static final String ZONE_PATH_SUBDOMAIN = "testsubdomain";
-
     private MockMvc mockMvc;
     private ResourcePropertySource mockResourcePropertySource;
     private UaaAuthentication mockUaaAuthentication;
-
-    private static String pathPrefixFor(RequestPathMode mode) {
-        return mode == RequestPathMode.ZONE_PATH ? "/z/" + ZONE_PATH_SUBDOMAIN : "";
-    }
 
     @BeforeEach
     void beforeEach() {
@@ -72,80 +57,53 @@ class ForcePasswordChangeControllerTest extends TestClassNullifier {
         SecurityContextHolder.getContext().setAuthentication(mockUaaAuthentication);
     }
 
-    @AfterEach
-    void afterEach() {
-        SecurityContextHolder.clearContext();
-        IdentityZoneHolder.set(IdentityZone.getUaa());
-    }
-
     @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void forcePasswordChange(RequestPathMode mode) throws Exception {
-        String prefix = pathPrefixFor(mode);
-        mockMvc.perform(get(prefix + "/force_password_change"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("force_password_change"))
-                .andExpect(model().attribute("email", "mail"));
-        mockMvc.perform(get(prefix + "/force_password_change/"))
+    @ValueSource(strings = {"/force_password_change", "/force_password_change/"})
+    void forcePasswordChange(String url) throws Exception {
+        mockMvc.perform(get(url))
                 .andExpect(status().isOk())
                 .andExpect(view().name("force_password_change"))
                 .andExpect(model().attribute("email", "mail"));
     }
 
     @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void redirectToLogInIfPasswordIsNotExpired(RequestPathMode mode) throws Exception {
-        String prefix = pathPrefixFor(mode);
-        mockMvc.perform(get(prefix + "/force_password_change"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("force_password_change"));
-        mockMvc.perform(get(prefix + "/force_password_change/"))
+    @ValueSource(strings = {"/force_password_change", "/force_password_change/"})
+    void redirectToLogInIfPasswordIsNotExpired(String url) throws Exception {
+        mockMvc.perform(get(url))
                 .andExpect(status().isOk())
                 .andExpect(view().name("force_password_change"));
     }
 
     @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void handleForcePasswordChange(RequestPathMode mode) throws Exception {
-        String prefix = pathPrefixFor(mode);
-        if (mode == RequestPathMode.DEFAULT) {
-            mockMvc.perform(
-                            post("/uaa/force_password_change")
-                                    .param("password", "pwd")
-                                    .param("password_confirmation", "pwd")
-                                    .contextPath("/uaa"))
-                    .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("/uaa/force_password_change_completed"));
-        } else {
-            mockMvc.perform(
-                            post(prefix + "/force_password_change")
-                                    .param("password", "pwd")
-                                    .param("password_confirmation", "pwd"))
-                    .andExpect(status().isFound())
-                    .andExpect(redirectedUrl(prefix + "/force_password_change_completed"));
-        }
+    @ValueSource(strings = {"/uaa/force_password_change", "/uaa/force_password_change/"})
+    void handleForcePasswordChange(String url) throws Exception {
+        mockMvc.perform(
+                        post(url)
+                                .param("password", "pwd")
+                                .param("password_confirmation", "pwd")
+                                .contextPath("/uaa"))
+                .andExpect(status().isFound())
+                .andExpect(redirectedUrl("/uaa/force_password_change_completed"));
         verify(mockUaaAuthentication, times(1)).setAuthenticatedTime(anyLong());
     }
 
     @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void handleForcePasswordChangeWithRedirect(RequestPathMode mode) throws Exception {
-        String prefix = pathPrefixFor(mode);
+    @ValueSource(strings = {"/force_password_change", "/force_password_change/"})
+    void handleForcePasswordChangeWithRedirect(String url) throws Exception {
         mockMvc.perform(
-                        post(prefix + "/force_password_change")
+                        post(url)
                                 .param("password", "pwd")
                                 .param("password_confirmation", "pwd"))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl(prefix + "/force_password_change_completed"));
+                .andExpect(redirectedUrl("/force_password_change_completed"));
     }
 
     @ParameterizedTest
-    @EnumSource(RequestPathMode.class)
-    void passwordAndConfirmAreDifferent(RequestPathMode mode) throws Exception {
-        String prefix = pathPrefixFor(mode);
+    @ValueSource(strings = {"/force_password_change", "/force_password_change/"})
+    void passwordAndConfirmAreDifferent(String url) throws Exception {
         when(mockResourcePropertySource.getProperty("force_password_change.form_error")).thenReturn("Passwords must match and not be empty.");
         mockMvc.perform(
-                        post(prefix + "/force_password_change")
+                        post(url)
                                 .param("password", "pwd")
                                 .param("password_confirmation", "nopwd"))
                 .andExpect(status().isUnprocessableEntity());

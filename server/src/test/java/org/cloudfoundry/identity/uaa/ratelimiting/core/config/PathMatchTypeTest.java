@@ -17,18 +17,8 @@ class PathMatchTypeTest {
         checkStartsWithSlash(PathMatchType.Equals);
         checkStartsWithSlash(PathMatchType.StartsWith);
         checkNotEmpty(PathMatchType.Contains);
-        checkStartsWithSlash(PathMatchType.PathPattern);
         checkEmpty(PathMatchType.Other);
         checkEmpty(PathMatchType.All);
-    }
-
-    @Test
-    void pathPattern_invalidPattern_returnsParseExceptionMessage() {
-        assertThat(PathMatchType.PathPattern.pathUnacceptable("/Users/*")).isNull();
-        assertThat(PathMatchType.PathPattern.pathUnacceptable("/z/{subdomain}/login")).isNull();
-        String invalid = PathMatchType.PathPattern.pathUnacceptable("/foo/**/bar");
-        assertThat(invalid).isNotNull();
-        assertThat(invalid).contains("pattern");
     }
 
     private void checkStartsWithSlash(PathMatchType type) {

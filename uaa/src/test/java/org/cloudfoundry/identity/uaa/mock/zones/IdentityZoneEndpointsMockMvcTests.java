@@ -37,10 +37,7 @@ import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.KeyWithCertTest;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.HttpMethod;
+import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
 import org.cloudfoundry.identity.uaa.util.beans.DbUtils;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation.Banner;
@@ -59,10 +56,8 @@ import org.cloudfoundry.identity.uaa.zone.ZoneManagementScopes;
 import org.cloudfoundry.identity.uaa.zone.event.IdentityZoneModifiedEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -93,7 +88,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.LOGIN_SERVER;
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.UAA;
-import static org.cloudfoundry.identity.uaa.mock.clients.AdminClientCreator.SECRET;
 import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.CookieCsrfPostProcessor.cookieCsrf;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYPE_AUTHORIZATION_CODE;
 import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.TokenFormat.OPAQUE;
@@ -1983,9 +1977,8 @@ class IdentityZoneEndpointsMockMvcTests {
 
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void successfulUserManagementInZoneUsingAdminClient(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void successfulUserManagementInZoneUsingAdminClient() throws Exception {
         String subdomain = generator.generate().toLowerCase();
         UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials", "scim.read,scim.write");
         adminClient.setClientSecret("admin-secret");
@@ -1997,15 +1990,16 @@ class IdentityZoneEndpointsMockMvcTests {
         checkAuditEventListener(1, AuditEventType.ClientCreateSuccess, clientCreateEventListener, identityZone.getId(), "http://localhost:8080/uaa/oauth/token", creationResult.getZoneAdminUser().getId());
 
         String scimAdminToken = testClient.getClientCredentialsOAuthAccessToken("admin", "admin-secret", "scim.write,scim.read", subdomain);
-        ScimUser user = createUser(mode, scimAdminToken, subdomain);
+        ScimUser user = createUser(scimAdminToken, subdomain);
         checkAuditEventListener(1, AuditEventType.UserCreatedEvent, userModifiedEventListener, identityZone.getId(), "http://" + subdomain + ".localhost:8080/uaa/oauth/token", "admin");
 
         user.setUserName("updated-username@test.com");
-        MockHttpServletRequestBuilder put = mode.createRequestBuilder(subdomain, HttpMethod.PUT, "/Users/" + user.getId())
+        MockHttpServletRequestBuilder put = put("/Users/" + user.getId())
                 .header("Authorization", "Bearer " + scimAdminToken)
                 .header("If-Match", "\"" + user.getVersion() + "\"")
                 .contentType(APPLICATION_JSON)
-                .content(JsonUtils.writeValueAsString(user));
+                .content(JsonUtils.writeValueAsString(user))
+                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
 
         MvcResult result = mockMvc.perform(put)
                 .andExpect(status().isOk())
@@ -2014,13 +2008,14 @@ class IdentityZoneEndpointsMockMvcTests {
 
         checkAuditEventListener(2, AuditEventType.UserModifiedEvent, userModifiedEventListener, identityZone.getId(), "http://" + subdomain + ".localhost:8080/uaa/oauth/token", "admin");
         user = JsonUtils.readValue(result.getResponse().getContentAsString(), ScimUser.class);
-        List<ScimUser> users = getUsersInZone(mode, subdomain, scimAdminToken);
+        List<ScimUser> users = getUsersInZone(subdomain, scimAdminToken);
         assertThat(users).containsExactly(user);
 
-        MockHttpServletRequestBuilder delete = mode.createRequestBuilder(subdomain, HttpMethod.DELETE, "/Users/" + user.getId())
+        MockHttpServletRequestBuilder delete = delete("/Users/" + user.getId())
                 .header("Authorization", "Bearer " + scimAdminToken)
                 .header("If-Match", "\"" + user.getVersion() + "\"")
-                .contentType(APPLICATION_JSON);
+                .contentType(APPLICATION_JSON)
+                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
 
         mockMvc.perform(delete)
                 .andExpect(status().isOk())
@@ -2028,13 +2023,12 @@ class IdentityZoneEndpointsMockMvcTests {
                 .andReturn();
 
         checkAuditEventListener(3, AuditEventType.UserDeletedEvent, userModifiedEventListener, identityZone.getId(), "http://" + subdomain + ".localhost:8080/uaa/oauth/token", "admin");
-        users = getUsersInZone(mode, subdomain, scimAdminToken);
+        users = getUsersInZone(subdomain, scimAdminToken);
         assertThat(users).isEmpty();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void createAndListUsersInOtherZoneIsUnauthorized(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void createAndListUsersInOtherZoneIsUnauthorized() throws Exception {
         String subdomain = generator.generate();
         MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
 
@@ -2045,15 +2039,18 @@ class IdentityZoneEndpointsMockMvcTests {
         ScimUser user = getScimUser();
 
         byte[] requestBody = JsonUtils.writeValueAsBytes(user);
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/Users")
+        MockHttpServletRequestBuilder post = post("/Users")
+                .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
                 .header("Authorization", "Bearer " + defaultZoneAdminToken)
                 .contentType(APPLICATION_JSON)
                 .content(requestBody);
 
         mockMvc.perform(post).andExpect(status().isUnauthorized());
 
-        MockHttpServletRequestBuilder get = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/Users")
-                .header("Authorization", "Bearer " + defaultZoneAdminToken);
+        MockHttpServletRequestBuilder get = get("/Users").header("Authorization", "Bearer " + defaultZoneAdminToken);
+        if (subdomain != null && !"".equals(subdomain)) {
+            get.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+        }
 
         mockMvc.perform(get).andExpect(status().isUnauthorized()).andReturn();
     }
@@ -2280,17 +2277,16 @@ class IdentityZoneEndpointsMockMvcTests {
     }
 
     private ScimUser createUser(String token, String subdomain) throws Exception {
-        return createUser(ZoneResolutionMode.SUBDOMAIN, token, subdomain);
-    }
-
-    private ScimUser createUser(ZoneResolutionMode mode, String token, String subdomain) throws Exception {
         ScimUser user = getScimUser();
 
         byte[] requestBody = JsonUtils.writeValueAsBytes(user);
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.POST, "/Users")
+        MockHttpServletRequestBuilder post = post("/Users")
                 .header("Authorization", "Bearer " + token)
                 .contentType(APPLICATION_JSON)
                 .content(requestBody);
+        if (subdomain != null && !subdomain.isEmpty()) {
+            post.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+        }
 
         MvcResult result = mockMvc.perform(post)
                 .andExpect(status().isCreated())
@@ -2417,75 +2413,14 @@ class IdentityZoneEndpointsMockMvcTests {
     }
 
     private List<ScimUser> getUsersInZone(String subdomain, String token) throws Exception {
-        return getUsersInZone(ZoneResolutionMode.SUBDOMAIN, subdomain, token);
-    }
-
-    private List<ScimUser> getUsersInZone(ZoneResolutionMode mode, String subdomain, String token) throws Exception {
-        MockHttpServletRequestBuilder get = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.GET, "/Users")
-                .header("Authorization", "Bearer " + token);
+        MockHttpServletRequestBuilder get = get("/Users").header("Authorization", "Bearer " + token);
+        if (subdomain != null && !subdomain.isEmpty()) {
+            get.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+        }
 
         MvcResult mvcResult = mockMvc.perform(get).andExpect(status().isOk()).andReturn();
         JsonNode root = JsonUtils.readTree(mvcResult.getResponse().getContentAsString());
         return JsonUtils.readValue(root.get("resources").toString(), new TypeReference<List<ScimUser>>() {
         });
-    }
-
-    @Nested
-    @DefaultTestContext
-    class IdentityZonesZonePathSupport {
-
-        @ParameterizedTest
-        @EnumSource(ZoneResolutionMode.class)
-        void get_identity_zones_list_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
-            String subdomain = generator.generate().toLowerCase();
-            IdentityZoneCreationResult creationResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
-            String token = getZoneUaaAdminToken(creationResult);
-
-            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/identity-zones")
-                                .header("Authorization", "Bearer " + token)
-                                .accept(MediaType.APPLICATION_JSON_VALUE))
-                    .andDo(print())
-                    .andExpect(status().isOk());
-        }
-
-        @ParameterizedTest
-        @EnumSource(ZoneResolutionMode.class)
-        void get_identity_zone_by_id_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
-            String subdomain = generator.generate().toLowerCase();
-            IdentityZoneCreationResult creationResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
-            String zoneId = creationResult.getIdentityZone().getId();
-            String token = getZoneUaaAdminToken(creationResult);
-
-            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/identity-zones/" + zoneId)
-                                .header("Authorization", "Bearer " + token)
-                                .accept(MediaType.APPLICATION_JSON_VALUE))
-                        .andExpect(status().isOk());
-        }
-    }
-
-    private String getZoneUaaAdminToken(IdentityZoneCreationResult creationResult) throws Exception {
-        String zonedClientId = "idpZonePathTest" + System.nanoTime();
-        String zonedClientSecret = SECRET;
-        MockMvcUtils.createClient(
-                mockMvc,
-                creationResult.getZoneAdminToken(),
-                zonedClientId,
-                zonedClientSecret,
-                Collections.singleton("oauth"),
-                Collections.emptyList(),
-                List.of("client_credentials"),
-                "uaa.admin",
-                Collections.emptySet(),
-                creationResult.getIdentityZone()
-        );
-        String token = MockMvcUtils.getClientCredentialsOAuthAccessToken(
-                mockMvc,
-                zonedClientId,
-                zonedClientSecret,
-                "uaa.admin",
-                creationResult.getIdentityZone().getSubdomain(),
-                true
-        );
-        return token;
     }
 }

@@ -30,8 +30,7 @@ import org.cloudfoundry.identity.uaa.test.ZoneSeeder;
 import org.cloudfoundry.identity.uaa.test.ZoneSeederExtension;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
-import org.springframework.http.HttpMethod;
+import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
@@ -42,12 +41,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
-
-import java.util.stream.Stream;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -237,9 +231,8 @@ class ScimUserEndpointsMockMvcTests {
                 .andExpect(jsonPath("$.message").value("Password must be at least 1 characters in length."));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void createUserInOtherZoneWithUaaAdminTokenFromNonDefaultZone(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void createUserInOtherZoneWithUaaAdminTokenFromNonDefaultZone() throws Exception {
         IdentityZone identityZone = getIdentityZone();
 
         String authorities = "uaa.admin";
@@ -247,10 +240,11 @@ class ScimUserEndpointsMockMvcTests {
         String uaaAdminTokenFromOtherZone = testClient.getClientCredentialsOAuthAccessToken("testClientId", "testClientSecret", "uaa.admin", identityZone.getSubdomain());
 
         byte[] requestBody = JsonUtils.writeValueAsBytes(getScimUser());
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.POST, "/Users")
+        MockHttpServletRequestBuilder post = post("/Users")
                 .header("Authorization", "Bearer " + uaaAdminTokenFromOtherZone)
                 .contentType(APPLICATION_JSON)
                 .content(requestBody);
+        post.with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost"));
         post.header(HEADER, IdentityZone.getUaaZoneId());
 
         mockMvc.perform(post).andExpect(status().isForbidden());
@@ -602,18 +596,9 @@ class ScimUserEndpointsMockMvcTests {
         getAndReturnUser(HttpStatus.OK.value(), updatedUser, selfToken);
     }
 
-    static Stream<Arguments> urlAndZoneModeProvider() {
-        return Stream.of(
-                Arguments.of("/Users", ZoneResolutionMode.SUBDOMAIN),
-                Arguments.of("/Users", ZoneResolutionMode.ZONE_PATH),
-                Arguments.of("/Users/", ZoneResolutionMode.SUBDOMAIN),
-                Arguments.of("/Users/", ZoneResolutionMode.ZONE_PATH)
-        );
-    }
-
     @ParameterizedTest
-    @MethodSource("urlAndZoneModeProvider")
-    void createUserInOtherZoneIsUnauthorized(String url, ZoneResolutionMode mode) throws Exception {
+    @ValueSource(strings = {"/Users", "/Users/"})
+    void createUserInOtherZoneIsUnauthorized(String url) throws Exception {
         String subdomain = generator.generate();
         MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
 
@@ -625,7 +610,8 @@ class ScimUserEndpointsMockMvcTests {
         ScimUser user = getScimUser();
 
         byte[] requestBody = JsonUtils.writeValueAsBytes(user);
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(otherSubdomain, HttpMethod.POST, url)
+        MockHttpServletRequestBuilder post = post(url)
+                .with(new SetServerNameRequestPostProcessor(otherSubdomain + ".localhost"))
                 .header("Authorization", "Bearer " + zoneAdminToken)
                 .contentType(APPLICATION_JSON)
                 .content(requestBody);
@@ -633,11 +619,10 @@ class ScimUserEndpointsMockMvcTests {
         mockMvc.perform(post).andExpect(status().isUnauthorized());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void unlockAccount(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void unlockAccount() throws Exception {
         ScimUser userToLockout = createUser(uaaAdminToken);
-        attemptUnsuccessfulLogin(mode, 5, userToLockout.getUserName(), "");
+        attemptUnsuccessfulLogin(5, userToLockout.getUserName(), "");
 
         UserAccountStatus alteredAccountStatus = new UserAccountStatus();
         alteredAccountStatus.setLocked(false);
@@ -650,11 +635,10 @@ class ScimUserEndpointsMockMvcTests {
                 .andExpect(redirectedUrl("/"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void accountStatusEmptyPatchDoesNotUnlock(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void accountStatusEmptyPatchDoesNotUnlock() throws Exception {
         ScimUser userToLockout = createUser(uaaAdminToken);
-        attemptUnsuccessfulLogin(mode, 5, userToLockout.getUserName(), "");
+        attemptUnsuccessfulLogin(5, userToLockout.getUserName(), "");
 
         updateAccountStatus(userToLockout, new UserAccountStatus())
                 .andExpect(status().isOk())
@@ -753,11 +737,10 @@ class ScimUserEndpointsMockMvcTests {
                 .andExpect(redirectedUrl("/"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void tryMultipleStatusUpdatesWithInvalidRemovalOfPasswordChange(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void tryMultipleStatusUpdatesWithInvalidRemovalOfPasswordChange() throws Exception {
         ScimUser user = createUser(uaaAdminToken);
-        attemptUnsuccessfulLogin(mode, 5, user.getUserName(), "");
+        attemptUnsuccessfulLogin(5, user.getUserName(), "");
 
         UserAccountStatus alteredAccountStatus = new UserAccountStatus();
         alteredAccountStatus.setPasswordChangeRequired(false);
@@ -1306,23 +1289,18 @@ class ScimUserEndpointsMockMvcTests {
     }
 
     private ResultActions createUserAndReturnResult(ScimUser user, String token, String subdomain, String switchZone) throws Exception {
-        return createUserAndReturnResult(ZoneResolutionMode.SUBDOMAIN, "/Users",  user, token, subdomain, switchZone);
+        return createUserAndReturnResult("/Users",  user, token, subdomain, switchZone);
     }
 
     private ResultActions createUserAndReturnResult(String url, ScimUser user, String token, String subdomain, String switchZone) throws Exception {
-        return createUserAndReturnResult(ZoneResolutionMode.SUBDOMAIN, url,  user, token, subdomain, switchZone);
-    }
-
-    private ResultActions createUserAndReturnResult(ZoneResolutionMode mode, ScimUser user, String token, String subdomain, String switchZone) throws Exception {
-        return createUserAndReturnResult(mode, "/Users",  user, token, subdomain, switchZone);
-    }
-
-    private ResultActions createUserAndReturnResult(ZoneResolutionMode mode, String url, ScimUser user, String token, String subdomain, String switchZone) throws Exception {
         byte[] requestBody = JsonUtils.writeValueAsBytes(user);
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.POST, url)
+        MockHttpServletRequestBuilder post = post(url)
                 .header("Authorization", "Bearer " + token)
                 .contentType(APPLICATION_JSON)
                 .content(requestBody);
+        if (subdomain != null && !"".equals(subdomain)) {
+            post.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
+        }
         if (switchZone != null) {
             post.header(HEADER, switchZone);
         }
@@ -1412,8 +1390,10 @@ class ScimUserEndpointsMockMvcTests {
                         .param("password", user.getPassword()));
     }
 
-    private void attemptUnsuccessfulLogin(ZoneResolutionMode mode, int numberOfAttempts, String username, String subdomain) throws Exception {
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/login.do")
+    private void attemptUnsuccessfulLogin(int numberOfAttempts, String username, String subdomain) throws Exception {
+        String requestDomain = "".equals(subdomain) ? "localhost" : subdomain + ".localhost";
+        MockHttpServletRequestBuilder post = post("/login.do")
+                .with(new SetServerNameRequestPostProcessor(requestDomain))
                 .with(cookieCsrf())
                 .param("username", username)
                 .param("password", "wrong_password");

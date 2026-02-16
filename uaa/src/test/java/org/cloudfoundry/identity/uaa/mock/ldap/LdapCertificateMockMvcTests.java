@@ -5,14 +5,12 @@ import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.provider.LdapIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.test.InMemoryLdapServer;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.HttpMethod;
+import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.cloudfoundry.identity.uaa.oauth.common.util.RandomValueStringGenerator;
@@ -27,6 +25,7 @@ import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.CookieCsrfPos
 import static org.springframework.http.MediaType.TEXT_HTML_VALUE;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.unauthenticated;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -103,12 +102,11 @@ class LdapCertificateMockMvcTests {
         MockMvcUtils.createIdentityProvider(mockMvc, trustedButExpiredCertZone, OriginKeys.LDAP, definition);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void trusted_server_certificate(ZoneResolutionMode mode) throws Exception {
-        mockMvc.perform(mode.createRequestBuilder(trustedCertZone.getIdentityZone().getSubdomain(), HttpMethod.POST, "/login.do")
-                .accept(TEXT_HTML_VALUE)
+    @Test
+    void trusted_server_certificate() throws Exception {
+        mockMvc.perform(post("/login.do").accept(TEXT_HTML_VALUE)
                 .with(cookieCsrf())
+                .with(new SetServerNameRequestPostProcessor(trustedCertZone.getIdentityZone().getSubdomain() + ".localhost"))
                 .param("username", "marissa2")
                 .param("password", LDAP))
                 .andExpect(status().isFound())
@@ -116,19 +114,15 @@ class LdapCertificateMockMvcTests {
                 .andExpect(authenticated());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void trusted_but_expired_server_certificate(ZoneResolutionMode mode) throws Exception {
-        String expectedRedirectUrl = mode == ZoneResolutionMode.SUBDOMAIN ?
-                "/login?error=login_failure" :
-                "/z/" + trustedButExpiredCertZone.getIdentityZone().getSubdomain() + "/login?error=login_failure";
-        mockMvc.perform(mode.createRequestBuilder(trustedButExpiredCertZone.getIdentityZone().getSubdomain(), HttpMethod.POST, "/login.do")
-                .accept(TEXT_HTML_VALUE)
+    @Test
+    void trusted_but_expired_server_certificate() throws Exception {
+        mockMvc.perform(post("/login.do").accept(TEXT_HTML_VALUE)
                 .with(cookieCsrf())
+                .with(new SetServerNameRequestPostProcessor(trustedButExpiredCertZone.getIdentityZone().getSubdomain() + ".localhost"))
                 .param("username", "marissa2")
                 .param("password", LDAP))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl(expectedRedirectUrl))
+                .andExpect(redirectedUrl("/login?error=login_failure"))
                 .andExpect(unauthenticated());
     }
 }

@@ -5,28 +5,17 @@ import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthenticationDetails;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
-import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.codestore.JdbcExpiringCodeStore;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.IdentityZoneCreationResult;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.RemoteUserAuthentication;
 import org.cloudfoundry.identity.uaa.oauth.common.util.RandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.oauth.provider.OAuth2Authentication;
-import org.cloudfoundry.identity.uaa.scim.ScimUser;
 import org.cloudfoundry.identity.uaa.user.UaaUserDatabase;
-import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.web.UaaFilterChain;
-import org.cloudfoundry.identity.uaa.zone.IdentityZone;
-import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpSession;
@@ -63,7 +52,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @DefaultTestContext
 class PasscodeMockMvcTests {
-    private final AlphanumericRandomValueStringGenerator subdomainGenerator = new AlphanumericRandomValueStringGenerator();
     private CaptureSecurityContextFilter captureSecurityContextFilter;
     private UaaPrincipal marissa;
 
@@ -283,77 +271,6 @@ class PasscodeMockMvcTests {
                     .containsAnyOf("-", "_")
                     .matches("[1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\\-_]*");
         });
-    }
-
-    /**
-     * Creates another identity zone (with admin client) and a user in that zone; returns both for zone-path passcode tests.
-     */
-    private IdentityZoneCreationResult createZoneAndUserInOtherZone(String subdomain, ScimUser[] userOut) throws Exception {
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mockMvc, "admin", "admin-secret", null, subdomain);
-        String username = new RandomValueStringGenerator().generate() + "@test.org";
-        ScimUser user = new ScimUser(null, username, "givenname", "familyname");
-        user.setPrimaryEmail(username);
-        user.setPassword("secret");
-        ScimUser created = MockMvcUtils.createUserInZone(mockMvc, adminToken, user, zoneResult.getIdentityZone().getSubdomain());
-        userOut[0] = created;
-        return zoneResult;
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void get_passcode_within_zone(ZoneResolutionMode mode) throws Exception {
-        String subdomain = subdomainGenerator.generate().toLowerCase();
-        ScimUser[] userHolder = new ScimUser[1];
-        IdentityZoneCreationResult zoneResult = createZoneAndUserInOtherZone(subdomain, userHolder);
-        ScimUser user = userHolder[0];
-        IdentityZone zone = zoneResult.getIdentityZone();
-
-        IdentityZone previousZone = IdentityZoneHolder.get();
-        try {
-            IdentityZoneHolder.set(zone);
-            UaaUserDatabase db = webApplicationContext.getBean(UaaUserDatabase.class);
-            UaaPrincipal zoneUserPrincipal = new UaaPrincipal(db.retrieveUserByName(user.getUserName(), OriginKeys.UAA));
-            UaaAuthenticationDetails details = new UaaAuthenticationDetails(new MockHttpServletRequest());
-            UaaAuthentication uaaAuthentication = new UaaAuthentication(zoneUserPrincipal, new ArrayList<>(), details);
-            MockSecurityContext mockSecurityContext = new MockSecurityContext(uaaAuthentication);
-
-            SecurityContextHolder.setContext(mockSecurityContext);
-            MockHttpSession session = new MockHttpSession();
-            session.setAttribute(
-                    HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
-                    mockSecurityContext
-            );
-
-            MockHttpServletRequestBuilder get = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/passcode")
-                    .accept(APPLICATION_JSON)
-                    .session(session);
-
-            String passcode = JsonUtils.readValue(
-                    mockMvc.perform(get)
-                            .andExpect(status().isOk())
-                            .andReturn().getResponse().getContentAsString(),
-                    String.class);
-
-            assertThat(passcode).isNotBlank();
-        } finally {
-            IdentityZoneHolder.set(previousZone);
-        }
-    }
-
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void get_passcode_unauthenticated_redirects_to_login(ZoneResolutionMode mode) throws Exception {
-        String subdomain = subdomainGenerator.generate().toLowerCase();
-        MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
-
-        int status = mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/passcode")
-                        .accept(APPLICATION_JSON))
-                .andReturn().getResponse().getStatus();
-        assertThat(status).isIn(302, 303, 307, 401, 403);
     }
 
     public static class MockSecurityContext implements SecurityContext {

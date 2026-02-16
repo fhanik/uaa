@@ -5,8 +5,9 @@ import org.cloudfoundry.identity.uaa.account.UserAccountStatus;
 import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtilsZonePath;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.IdentityZoneCreationResult;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
 import org.cloudfoundry.identity.uaa.provider.IdentityProviderProvisioning;
 import org.cloudfoundry.identity.uaa.provider.JdbcIdentityProviderProvisioning;
@@ -80,12 +81,12 @@ class ForcePasswordChangeControllerZoneResolutionMockMvcTest {
                 "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
         adminClient.setClientSecret("admin-secret");
         zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-        token = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "admin-secret", null, subdomain, false);
+        token = MockMvcUtilsZonePath.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "admin-secret", null, subdomain, false);
         String username = new AlphanumericRandomValueStringGenerator().generate() + "@test.org";
         ScimUser newUser = new ScimUser(null, username, "givenname", "familyname");
         newUser.setPrimaryEmail(username);
         newUser.setPassword("secret");
-        user = MockMvcUtils.createUserInZone(mode, mockMvc, token, newUser, zoneResult.getIdentityZone().getSubdomain(), null);
+        user = MockMvcUtilsZonePath.createUserInZone(mode, mockMvc, token, newUser, zoneResult.getIdentityZone().getSubdomain(), null);
     }
 
     @BeforeEach

@@ -36,9 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @ExtendWith(PollutionPreventionExtension.class)
 @WebAppConfiguration
-@SpringJUnitConfig(classes = SessionControllerViewTests.ContextConfiguration.class)
+@SpringJUnitConfig(classes = SessionControllerViewZonePathTests.ContextConfiguration.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
-class SessionControllerViewTests extends TestClassNullifier {
+class SessionControllerViewZonePathTests extends TestClassNullifier {
 
     private static final String CLIENT_ID = "test-client";
     private static final String MESSAGE_ORIGIN = "https://origin.example.com";

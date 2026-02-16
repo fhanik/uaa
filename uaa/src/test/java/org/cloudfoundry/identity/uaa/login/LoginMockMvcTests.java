@@ -33,10 +33,7 @@ import org.cloudfoundry.identity.uaa.user.UaaAuthority;
 import org.cloudfoundry.identity.uaa.util.AlphanumericRandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
-import org.springframework.http.HttpMethod;
+import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
 import org.cloudfoundry.identity.uaa.web.LimitedModeUaaFilter;
 import org.cloudfoundry.identity.uaa.zone.BrandingInformation;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
@@ -285,8 +282,7 @@ public class LoginMockMvcTests {
     private void expect_idp_discovery(
             JdbcIdentityProviderProvisioning identityProviderProvisioning,
             JdbcIdentityZoneProvisioning identityZoneProvisioning,
-            List<String> allowedProviders,
-            ZoneResolutionMode mode
+            List<String> allowedProviders
     ) throws Exception {
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
@@ -298,17 +294,17 @@ public class LoginMockMvcTests {
 
         MockHttpSession session = configure_UAA_for_idp_discovery(webApplicationContext, identityProviderProvisioning, generator, originKey, zone, allowedProviders);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .session(session)
-                        .header("Accept", TEXT_HTML))
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(view().name("idp_discovery/email"))
                 .andExpect(xpath("//input[@name='email']").exists());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void access_discovery_when_expected(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void access_discovery_when_expected() throws Exception {
 
         List<List<String>> allowedProvidersPermutations = new ArrayList<>();
         allowedProvidersPermutations.add(new ArrayList<>(asList(UAA, LDAP, SAML))); // Model should not contain a login hint if we allow both UAA and LDAP
@@ -320,13 +316,12 @@ public class LoginMockMvcTests {
         allowedProvidersPermutations.add(new ArrayList<>(singletonList(LDAP))); // Model should contain a login hint if we exclude UAA from allowed providers
 
         for (List<String> allowedProviders : allowedProvidersPermutations) {
-            expect_idp_discovery(identityProviderProvisioning, identityZoneProvisioning, allowedProviders, mode);
+            expect_idp_discovery(identityProviderProvisioning, identityZoneProvisioning, allowedProviders);
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void redirect_when_only_saml_allowed(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void redirect_when_only_saml_allowed() throws Exception {
 
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
@@ -342,9 +337,10 @@ public class LoginMockMvcTests {
                 zone,
                 new ArrayList<>(asList(originKey, SAML)));
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .session(session)
-                        .header("Accept", TEXT_HTML))
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().is3xxRedirection());
     }
 
@@ -378,50 +374,6 @@ public class LoginMockMvcTests {
                 .andExpect(model().attribute("links", hasEntry("createAccountLink", "/create_account")))
                 .andExpect(model().attributeExists("prompts"))
                 .andExpect(content().string(containsString("/create_account")));
-    }
-
-    /**
-     * Login page must be zone-path aware: form action and self-service links
-     * (create account, forgot password) must use the zone path prefix when present.
-     * Passes for SUBDOMAIN (no /z/ path); will pass for ZONE_PATH once login.html is made zone-aware.
-     */
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void login_page_has_zone_aware_form_action_and_links(ZoneResolutionMode mode) throws Exception {
-        String subdomain = mode == ZoneResolutionMode.ZONE_PATH
-                ? new AlphanumericRandomValueStringGenerator(24).generate().toLowerCase()
-                : "";
-        if (mode == ZoneResolutionMode.ZONE_PATH) {
-            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
-        }
-
-        String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/login.do" : "/login.do";
-        String expectedCreateAccountPath = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/create_account" : "/create_account";
-        String expectedForgotPasswordPath = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/forgot_password" : "/forgot_password";
-
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML))
-                .andExpect(status().isOk())
-                .andExpect(view().name("login"))
-                .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")))
-                .andExpect(content().string(containsString(expectedCreateAccountPath)))
-                .andExpect(content().string(containsString(expectedForgotPasswordPath)));
-    }
-
-    /**
-     * Backwards compatibility: when UAA is deployed with context path /uaa (e.g. integration tests),
-     * login page must render form action and links with /uaa prefix so forms and links work.
-     */
-    @Test
-    void loginPageWithContextPath_returnsFormActionAndLinksWithContextPath() throws Exception {
-        // Use default UAA links (create_account, forgot_password) regardless of globalLinks set by other tests
-        ReflectionTestUtils.setField(loginInfoEndpoint, "globalLinks", new Links().setSelfService(new Links.SelfService()));
-        mockMvc.perform(get("/uaa/login").contextPath("/uaa").accept(TEXT_HTML))
-                .andExpect(status().isOk())
-                .andExpect(view().name("login"))
-                .andExpect(content().string(containsString("action=\"/uaa/login.do\"")))
-                .andExpect(content().string(containsString("/uaa/create_account")))
-                .andExpect(content().string(containsString("/uaa/forgot_password")));
     }
 
     IdentityZone createZoneLinksZone() throws Exception {
@@ -645,32 +597,6 @@ public class LoginMockMvcTests {
                 .andExpect(content().string(containsString("\"origin\":\"uaa\"")));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void post_authenticate_within_zone(ZoneResolutionMode mode) throws Exception {
-        assumeFalse(isLimitedMode(limitedModeUaaFilter.getFilter()), "Zone creation returns 503 in limited mode.");
-        String subdomain = new AlphanumericRandomValueStringGenerator().generate().toLowerCase();
-        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
-                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
-        adminClient.setClientSecret("admin-secret");
-        IdentityZoneCreationResult zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
-        String adminToken = MockMvcUtils.getClientCredentialsOAuthAccessToken(mockMvc, "admin", "admin-secret", null, subdomain);
-        String username = generator.generate() + "@test.org";
-        ScimUser user = new ScimUser(null, username, "givenname", "familyname");
-        user.setPrimaryEmail(username);
-        user.setPassword("secret");
-        user = MockMvcUtils.createUserInZone(mockMvc, adminToken, user, zoneResult.getIdentityZone().getSubdomain());
-
-        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.POST, "/authenticate")
-                        .accept(MediaType.APPLICATION_JSON_VALUE)
-                        .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                        .param("username", user.getUserName())
-                        .param("password", "secret"))
-                .andExpect(status().isOk())
-                .andExpect(content().string(containsString("\"username\":\"" + user.getUserName())))
-                .andExpect(content().string(containsString("\"email\":\"" + user.getPrimaryEmail())));
-    }
-
     @Test
     void previous_login_time_upon_authentication() throws Exception {
         ScimUser user = createUser(scimUserProvisioning, generator, IdentityZone.getUaaZoneId());
@@ -799,9 +725,8 @@ public class LoginMockMvcTests {
                 .andExpect(content().string(allOf(containsString(expectedFooterText))));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void customCompanyNameInZone(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void customCompanyNameInZone() throws Exception {
         String companyName = "Big Company";
         BrandingInformation branding = new BrandingInformation();
         branding.setCompanyName(companyName);
@@ -818,8 +743,7 @@ public class LoginMockMvcTests {
 
         String expectedFooterText = DEFAULT_COPYRIGHT_TEMPLATE.formatted(zoneCompanyName);
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML))
+        mockMvc.perform(get("/login").accept(TEXT_HTML).with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(content().string(allOf(containsString(expectedFooterText))));
     }
@@ -904,7 +828,7 @@ public class LoginMockMvcTests {
         mockMvc.perform(get("/uaa/logout.do").contextPath("/uaa"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/uaa/login"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
     }
 
     @Test
@@ -912,7 +836,7 @@ public class LoginMockMvcTests {
         mockMvc.perform(get("/uaa/logout.do").param("redirect", "https://www.google.com").contextPath("/uaa"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/uaa/login"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
     }
 
     @Test
@@ -924,7 +848,7 @@ public class LoginMockMvcTests {
             mockMvc.perform(get("/uaa/logout.do").param("redirect", "http://localhost/uaa/internal-location").contextPath("/uaa"))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("http://localhost/uaa/internal-location"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
         } finally {
             MockMvcUtils.setLogout(webApplicationContext, IdentityZone.getUaaZoneId(), original);
         }
@@ -941,7 +865,7 @@ public class LoginMockMvcTests {
             mockMvc.perform(get("/uaa/logout.do").param("redirect", "https://www.google.com").contextPath("/uaa"))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("https://www.google.com"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
         } finally {
             MockMvcUtils.setLogout(webApplicationContext, IdentityZone.getUaaZoneId(), original);
         }
@@ -958,7 +882,7 @@ public class LoginMockMvcTests {
             mockMvc.perform(get("/uaa/logout.do").param("redirect", "https://www.google.com").contextPath("/uaa"))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("/uaa/login"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
         } finally {
             MockMvcUtils.setLogout(webApplicationContext, IdentityZone.getUaaZoneId(), original);
         }
@@ -975,7 +899,7 @@ public class LoginMockMvcTests {
             mockMvc.perform(get("/uaa/logout.do").param("redirect", "https://www.google.com").contextPath("/uaa"))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("https://www.google.com"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
         } finally {
             MockMvcUtils.setLogout(webApplicationContext, IdentityZone.getUaaZoneId(), original);
         }
@@ -992,7 +916,7 @@ public class LoginMockMvcTests {
             mockMvc.perform(get("/uaa/logout.do").param("redirect", "https://www.google.com").contextPath("/uaa"))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("/uaa/login"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
         } finally {
             MockMvcUtils.setLogout(webApplicationContext, IdentityZone.getUaaZoneId(), original);
         }
@@ -1018,7 +942,7 @@ public class LoginMockMvcTests {
             mockMvc.perform(get("/uaa/logout.do").contextPath("/uaa"))
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("https://www.google.com"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
         } finally {
             MockMvcUtils.setLogout(webApplicationContext, IdentityZone.getUaaZoneId(), original);
         }
@@ -1044,7 +968,7 @@ public class LoginMockMvcTests {
                     )
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("http://testing.com"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
 
             mockMvc.perform(
                             get("/uaa/logout.do")
@@ -1054,7 +978,7 @@ public class LoginMockMvcTests {
                     )
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("http://www.wildcard.testing"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
 
             mockMvc.perform(
                             get("/uaa/logout.do")
@@ -1064,7 +988,7 @@ public class LoginMockMvcTests {
                     )
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("/uaa/login"))
-                    .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                    .andExpect(emptyCurrentUserCookie());
         } finally {
             MockMvcUtils.setLogout(webApplicationContext, IdentityZone.getUaaZoneId(), original);
         }
@@ -1086,7 +1010,7 @@ public class LoginMockMvcTests {
         mockMvc.perform(get("/uaa/logout.do").contextPath("/uaa"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/uaa/login"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
 
         //other zone
         mockMvc.perform(get("/uaa/logout.do")
@@ -1094,7 +1018,7 @@ public class LoginMockMvcTests {
                         .header("Host", zoneId + ".localhost"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://test.redirect.com"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
 
         mockMvc.perform(get("/uaa/logout.do")
                         .contextPath("/uaa")
@@ -1103,7 +1027,7 @@ public class LoginMockMvcTests {
                 )
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://test.redirect.com"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
 
         zone.getConfig().getLinks().getLogout().setDisableRedirectParameter(false);
         zone = identityZoneProvisioning.update(zone);
@@ -1115,7 +1039,7 @@ public class LoginMockMvcTests {
                 )
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://test.redirect.com"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
 
         zone.getConfig().getLinks().getLogout().setDisableRedirectParameter(false);
         zone.getConfig().getLinks().getLogout().setWhitelist(singletonList("http://google.com"));
@@ -1128,7 +1052,7 @@ public class LoginMockMvcTests {
                 )
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://google.com"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
 
         zone.getConfig().getLinks().getLogout().setWhitelist(singletonList("http://yahoo.com"));
         identityZoneProvisioning.update(zone);
@@ -1140,7 +1064,7 @@ public class LoginMockMvcTests {
                 )
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://test.redirect.com"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
 
         mockMvc.perform(get("/uaa/logout.do")
                         .contextPath("/uaa")
@@ -1149,7 +1073,7 @@ public class LoginMockMvcTests {
                 )
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("http://yahoo.com"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
     }
 
     @Test
@@ -1340,9 +1264,8 @@ public class LoginMockMvcTests {
                 .andExpect(model().attribute("createAccountLink", nullValue()));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void samlLoginLinksShowActiveProviders(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void samlLoginLinksShowActiveProviders() throws Exception {
         String activeAlias = "login-saml-" + generator.generate();
         String inactiveAlias = "login-saml-" + generator.generate();
 
@@ -1381,16 +1304,14 @@ public class LoginMockMvcTests {
         inactiveIdentityProvider.setOriginKey(inactiveAlias);
         createIdentityProvider(jdbcIdentityProviderProvisioning, identityZone, inactiveIdentityProvider);
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML))
+        mockMvc.perform(get("/login").accept(TEXT_HTML).with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(xpath("//a[text()='" + activeSamlIdentityProviderDefinition.getLinkText() + "']").exists())
                 .andExpect(xpath("//a[text()='" + inactiveSamlIdentityProviderDefinition.getLinkText() + "']").doesNotExist());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void samlRedirectWhenTheOnlyProvider(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void samlRedirectWhenTheOnlyProvider() throws Exception {
         String alias = "login-saml-" + generator.generate();
         final String zoneAdminClientId = "admin";
         UaaClientDetails zoneAdminClient = new UaaClientDetails(zoneAdminClientId, null, "openid", "client_credentials,authorization_code", "clients.admin,scim.read,scim.write", "http://test.redirect.com");
@@ -1420,15 +1341,17 @@ public class LoginMockMvcTests {
         SavedRequest savedRequest = new MockMvcUtils.MockSavedRequest();
         SessionUtils.setSavedRequestSession(session, savedRequest);
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .accept(TEXT_HTML)
-                        .session(session))
+                        .session(session)
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/saml2/authenticate/%s".formatted(alias)));
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .accept(APPLICATION_JSON)
-                        .session(session))
+                        .session(session)
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk());
 
         IdentityProvider uaaProvider = jdbcIdentityProviderProvisioning.retrieveByOriginIgnoreActiveFlag(UAA, identityZone.getId());
@@ -1436,9 +1359,10 @@ public class LoginMockMvcTests {
             IdentityZoneHolder.set(identityZone);
             uaaProvider.setActive(false);
             jdbcIdentityProviderProvisioning.update(uaaProvider, uaaProvider.getIdentityZoneId());
-            mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
+            mockMvc.perform(get("/login")
                             .accept(APPLICATION_JSON)
-                            .session(session))
+                            .session(session)
+                            .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                     .andExpect(status().isOk());
         } finally {
             IdentityZoneHolder.set(identityZone);
@@ -1448,9 +1372,8 @@ public class LoginMockMvcTests {
         }
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void samlRedirect_onlyOneProvider_noClientContext(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void samlRedirect_onlyOneProvider_noClientContext() throws Exception {
         String alias = "login-saml-" + generator.generate();
         final String zoneAdminClientId = "admin";
         UaaClientDetails zoneAdminClient = new UaaClientDetails(zoneAdminClientId, null, "openid", "client_credentials,authorization_code", "clients.admin,scim.read,scim.write", "http://test.redirect.com");
@@ -1478,16 +1401,15 @@ public class LoginMockMvcTests {
         uaaIdentityProvider.setActive(false);
         jdbcIdentityProviderProvisioning.update(uaaIdentityProvider, uaaIdentityProvider.getIdentityZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML))
+        mockMvc.perform(get("/login").accept(TEXT_HTML).with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost"))
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/saml2/authenticate/%s".formatted(alias)));
         IdentityZoneHolder.clear();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void externalOauthRedirect_onlyOneProvider_noClientContext_and_ResponseType_Set(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void externalOauthRedirect_onlyOneProvider_noClientContext_and_ResponseType_Set() throws Exception {
         final String zoneAdminClientId = "admin";
         UaaClientDetails zoneAdminClient = new UaaClientDetails(zoneAdminClientId, null, "openid", "client_credentials,authorization_code", "clients.admin,scim.read,scim.write", "http://test.redirect.com");
         zoneAdminClient.setClientSecret("admin-secret");
@@ -1502,30 +1424,27 @@ public class LoginMockMvcTests {
         uaaIdentityProvider.setActive(false);
         jdbcIdentityProviderProvisioning.update(uaaIdentityProvider, uaaIdentityProvider.getIdentityZoneId());
 
-        MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML)
-                        .servletPath(mode.getServletPath(identityZone.getSubdomain(), "/login")))
+        MvcResult mvcResult = mockMvc.perform(get("/login").accept(TEXT_HTML)
+                        .servletPath("/login")
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andReturn();
         String location = mvcResult.getResponse().getHeader("Location");
         Map<String, String> queryParams =
                 UriComponentsBuilder.fromUriString(location).build().getQueryParams().toSingleValueMap();
 
-        // For ZONE_PATH mode, the redirect_uri uses localhost; for SUBDOMAIN mode, it uses subdomain.localhost
-        String expectedHost = mode == ZoneResolutionMode.ZONE_PATH ? "localhost" : identityZone.getSubdomain() + ".localhost";
         assertThat(location).startsWith("http://auth.url");
         assertThat(queryParams).containsEntry("client_id", "uaa")
                 .containsEntry("response_type", "code+id_token")
-                .containsEntry("redirect_uri", "http%3A%2F%2F" + expectedHost + "%2Flogin%2Fcallback%2F" + oauthAlias)
+                .containsEntry("redirect_uri", "http%3A%2F%2F" + identityZone.getSubdomain() + ".localhost%2Flogin%2Fcallback%2F" + oauthAlias)
                 .containsEntry("scope", "openid+roles")
                 .containsKey("nonce");
 
         IdentityZoneHolder.clear();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void ExternalOAuthRedirectOnlyOneProviderWithDiscoveryUrl(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void ExternalOAuthRedirectOnlyOneProviderWithDiscoveryUrl() throws Exception {
         final String zoneAdminClientId = "admin";
         final String oidcMetaEndpoint = "http://mocked/.well-known/openid-configuration";
         final String oidcAuthUrl = "http://againmocked/oauth/auth";
@@ -1548,30 +1467,27 @@ public class LoginMockMvcTests {
         uaaIdentityProvider.setActive(false);
         jdbcIdentityProviderProvisioning.update(uaaIdentityProvider, uaaIdentityProvider.getIdentityZoneId());
 
-        MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML)
-                        .servletPath(mode.getServletPath(identityZone.getSubdomain(), "/login")))
+        MvcResult mvcResult = mockMvc.perform(get("/login").accept(TEXT_HTML)
+                        .servletPath("/login")
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andReturn();
         String location = mvcResult.getResponse().getHeader("Location");
         Map<String, String> queryParams =
                 UriComponentsBuilder.fromUriString(location).build().getQueryParams().toSingleValueMap();
 
-        // For ZONE_PATH mode, the redirect_uri uses localhost; for SUBDOMAIN mode, it uses subdomain.localhost
-        String expectedHost = mode == ZoneResolutionMode.ZONE_PATH ? "localhost" : identityZone.getSubdomain() + ".localhost";
         assertThat(location).startsWith(oidcAuthUrl);
         assertThat(queryParams).containsEntry("client_id", "uaa")
                 .containsEntry("response_type", "code+id_token")
-                .containsEntry("redirect_uri", "http%3A%2F%2F" + expectedHost + "%2Flogin%2Fcallback%2F" + oauthAlias)
+                .containsEntry("redirect_uri", "http%3A%2F%2F" + identityZone.getSubdomain() + ".localhost%2Flogin%2Fcallback%2F" + oauthAlias)
                 .containsEntry("scope", "openid+roles")
                 .containsKey("nonce");
 
         IdentityZoneHolder.clear();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void oauthRedirect_stateParameterPassedGetsReturned(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void oauthRedirect_stateParameterPassedGetsReturned() throws Exception {
         final String zoneAdminClientId = "admin";
         UaaClientDetails zoneAdminClient = new UaaClientDetails(zoneAdminClientId, null, "openid", "client_credentials,authorization_code", "clients.admin,scim.read,scim.write", "http://test.redirect.com");
         zoneAdminClient.setClientSecret("admin-secret");
@@ -1586,21 +1502,19 @@ public class LoginMockMvcTests {
         uaaIdentityProvider.setActive(false);
         jdbcIdentityProviderProvisioning.update(uaaIdentityProvider, uaaIdentityProvider.getIdentityZoneId());
 
-        MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML)
-                        .servletPath(mode.getServletPath(identityZone.getSubdomain(), "/login")))
+        MvcResult mvcResult = mockMvc.perform(get("/login").accept(TEXT_HTML)
+                        .servletPath("/login")
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andReturn();
         String location = mvcResult.getResponse().getHeader("Location");
         Map<String, String> queryParams =
                 UriComponentsBuilder.fromUriString(location).build().getQueryParams().toSingleValueMap();
 
-        // For ZONE_PATH mode, the redirect_uri uses localhost; for SUBDOMAIN mode, it uses subdomain.localhost
-        String expectedHost = mode == ZoneResolutionMode.ZONE_PATH ? "localhost" : identityZone.getSubdomain() + ".localhost";
         assertThat(location).startsWith("http://auth.url");
         assertThat(queryParams).containsEntry("client_id", "uaa")
                 .containsEntry("response_type", "code+id_token")
-                .containsEntry("redirect_uri", "http%3A%2F%2F" + expectedHost + "%2Flogin%2Fcallback%2F" + oauthAlias)
+                .containsEntry("redirect_uri", "http%3A%2F%2F" + identityZone.getSubdomain() + ".localhost%2Flogin%2Fcallback%2F" + oauthAlias)
                 .containsEntry("scope", "openid+roles")
                 .containsKey("nonce")
                 .extractingByKey("state").isNotNull();
@@ -1608,9 +1522,8 @@ public class LoginMockMvcTests {
         IdentityZoneHolder.clear();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void loginHintRedirect(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void loginHintRedirect() throws Exception {
         final String zoneAdminClientId = "admin";
         UaaClientDetails zoneAdminClient = new UaaClientDetails(zoneAdminClientId, null, "openid", "client_credentials,authorization_code", "clients.admin,scim.read,scim.write", "http://test.redirect.com");
         zoneAdminClient.setClientSecret("admin-secret");
@@ -1643,31 +1556,30 @@ public class LoginMockMvcTests {
         when(savedRequest.getParameterValues("login_hint")).thenReturn(new String[]{"example.com"});
         SessionUtils.setSavedRequestSession(session, savedRequest);
 
-        MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
+        MvcResult mvcResult = mockMvc.perform(get("/login")
                         .accept(TEXT_HTML)
                         .session(session)
-                        .servletPath(mode.getServletPath(identityZone.getSubdomain(), "/login")))
+                        .servletPath("/login")
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost"))
+                )
                 .andExpect(status().isFound())
                 .andReturn();
         String location = mvcResult.getResponse().getHeader("Location");
         Map<String, String> queryParams =
                 UriComponentsBuilder.fromUriString(location).build().getQueryParams().toSingleValueMap();
 
-        // For ZONE_PATH mode, the redirect_uri uses localhost; for SUBDOMAIN mode, it uses subdomain.localhost
-        String expectedHost = mode == ZoneResolutionMode.ZONE_PATH ? "localhost" : identityZone.getSubdomain() + ".localhost";
         assertThat(location).startsWith("http://auth.url");
         assertThat(queryParams).containsEntry("client_id", "uaa")
                 .containsEntry("response_type", "code")
-                .containsEntry("redirect_uri", "http%3A%2F%2F" + expectedHost + "%2Flogin%2Fcallback%2F" + oauthAlias)
+                .containsEntry("redirect_uri", "http%3A%2F%2F" + identityZone.getSubdomain() + ".localhost%2Flogin%2Fcallback%2F" + oauthAlias)
                 .containsEntry("scope", "openid+roles")
                 .containsKey("nonce");
 
         IdentityZoneHolder.clear();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void noRedirect_ifProvidersOfDifferentTypesPresent(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void noRedirect_ifProvidersOfDifferentTypesPresent() throws Exception {
         String alias = "login-saml-" + generator.generate();
         final String zoneAdminClientId = "admin";
         UaaClientDetails zoneAdminClient = new UaaClientDetails(zoneAdminClientId, null, "openid", "client_credentials,authorization_code", "clients.admin,scim.read,scim.write", "http://test.redirect.com");
@@ -1711,16 +1623,15 @@ public class LoginMockMvcTests {
         uaaIdentityProvider.setActive(false);
         jdbcIdentityProviderProvisioning.update(uaaIdentityProvider, uaaIdentityProvider.getIdentityZoneId());
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML))
+        mockMvc.perform(get("/login").accept(TEXT_HTML).with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost"))
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(view().name("login"));
         IdentityZoneHolder.clear();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void noCreateAccountLinksWhenUAAisNotAllowedProvider(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void noCreateAccountLinksWhenUAAisNotAllowedProvider() throws Exception {
         String alias2 = "login-saml-" + generator.generate();
         String alias3 = "login-saml-" + generator.generate();
         final String zoneAdminClientId = "admin";
@@ -1806,17 +1717,16 @@ public class LoginMockMvcTests {
         };
         SessionUtils.setSavedRequestSession(session, savedRequest);
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML)
-                        .session(session))
+        mockMvc.perform(get("/login").accept(TEXT_HTML).with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost"))
+                        .session(session)
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(xpath("//a[text()='Create account']").doesNotExist())
                 .andExpect(xpath("//a[text()='Reset password']").doesNotExist());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void deactivatedProviderIsRemovedFromSamlLoginLinks(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void deactivatedProviderIsRemovedFromSamlLoginLinks() throws Exception {
         assumeFalse(isLimitedMode(limitedModeUaaFilter.getFilter()), "Test only runs in non limited mode.");
         String alias = "login-saml-" + generator.generate();
         UaaClientDetails zoneAdminClient = new UaaClientDetails("admin", null, null, "client_credentials", "clients.admin,scim.read,scim.write");
@@ -1840,16 +1750,14 @@ public class LoginMockMvcTests {
         identityProvider.setOriginKey(alias);
         identityProvider = createIdentityProvider(jdbcIdentityProviderProvisioning, identityZone, identityProvider);
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML))
+        mockMvc.perform(get("/login").accept(TEXT_HTML).with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(xpath("//a[text()='" + samlIdentityProviderDefinition.getLinkText() + "']").exists());
 
         identityProvider.setActive(false);
         jdbcIdentityProviderProvisioning.update(identityProvider, identityZone.getId());
 
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, "/login")
-                        .accept(TEXT_HTML))
+        mockMvc.perform(get("/login").accept(TEXT_HTML).with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(xpath("//a[text()='" + samlIdentityProviderDefinition.getLinkText() + "']").doesNotExist());
     }
@@ -2202,16 +2110,11 @@ public class LoginMockMvcTests {
      * the CORS policy of the default zone.
      * Positive test case that exercises the CORS logic for dealing with the "X-Requested-With" header.
      */
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void xhrCorsPreflightForNonDefaultZoneWhenZoneSpecificCorsPolicyIsNull(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void xhrCorsPreflightForNonDefaultZoneWhenZoneSpecificCorsPolicyIsNull() throws Exception {
         // setting the default zone CORS policy
         corsFilter.getFilter().setCorsXhrAllowedOrigins(asList("^localhost$", "^*\\.localhost$"));
-        // For ZONE_PATH mode, the request path is /z/{subdomain}/logout.do, so we need to allow that pattern
-        List<String> allowedUris = mode == ZoneResolutionMode.ZONE_PATH
-                ? asList("^/logout.do$", "^/z/[^/]+/logout.do$")
-                : singletonList("^/logout.do$");
-        corsFilter.getFilter().setCorsXhrAllowedUris(allowedUris);
+        corsFilter.getFilter().setCorsXhrAllowedUris(singletonList("^/logout.do$"));
         corsFilter.getFilter().initialize();
 
         // set the non default zone CORS Xhr policy to null
@@ -2222,9 +2125,9 @@ public class LoginMockMvcTests {
         HttpHeaders httpHeaders = new HttpHeaders();
         httpHeaders.add("Access-Control-Request-Headers", "X-Requested-With");
         httpHeaders.add("Access-Control-Request-Method", "GET");
-        // For ZONE_PATH mode, use localhost as Origin (no subdomain in host)
-        httpHeaders.add("Origin", mode == ZoneResolutionMode.ZONE_PATH ? "localhost" : "testzone1.localhost");
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.OPTIONS, "/logout.do")
+        httpHeaders.add("Origin", "testzone1.localhost");
+        mockMvc.perform(options("/logout.do")
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost"))
                         .headers(httpHeaders))
                 .andExpect(status().isOk());
     }
@@ -2234,9 +2137,8 @@ public class LoginMockMvcTests {
      * Positive test case that exercises the CORS logic for dealing with the "X-Requested-With" header.
      * The access control request method is POST, which is allowed by the zone specific CORS policy in this test case setup
      */
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void xhrCorsPreflightForNonDefaultZoneWhenZoneSpecificCorsPolicyExists(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void xhrCorsPreflightForNonDefaultZoneWhenZoneSpecificCorsPolicyExists() throws Exception {
         // setting the default zone CORS policy to not allow POST
         corsFilter.getFilter().setCorsXhrAllowedMethods(List.of(GET.toString(), OPTIONS.toString()));
         corsFilter.getFilter().initialize();
@@ -2251,7 +2153,8 @@ public class LoginMockMvcTests {
         httpHeaders.add("Access-Control-Request-Headers", "X-Requested-With");
         httpHeaders.add("Access-Control-Request-Method", "POST");
         httpHeaders.add("Origin", "testzone1.localhost");
-        mockMvc.perform(mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.OPTIONS, "/logout.do")
+        mockMvc.perform(options("/logout.do")
+                        .with(new SetServerNameRequestPostProcessor(identityZone.getSubdomain() + ".localhost"))
                         .headers(httpHeaders))
                 .andExpect(status().isOk());
     }
@@ -2259,19 +2162,18 @@ public class LoginMockMvcTests {
     @Test
     void login_LockoutPolicySucceeds_ForDefaultZone() throws Exception {
         ScimUser userToLockout = createUser(scimUserProvisioning, generator, IdentityZone.getUaaZoneId());
-        attemptUnsuccessfulLogin(mockMvc, ZoneResolutionMode.SUBDOMAIN, 5, userToLockout.getUserName(), "");
+        attemptUnsuccessfulLogin(mockMvc, 5, userToLockout.getUserName(), "");
         mockMvc.perform(post("/uaa/login.do")
                         .contextPath("/uaa")
                         .with(cookieCsrf())
                         .param("username", userToLockout.getUserName())
                         .param("password", userToLockout.getPassword()))
                 .andExpect(redirectedUrl("/uaa/login?error=account_locked"))
-                .andExpect(emptyCurrentUserCookie(ZoneResolutionMode.SUBDOMAIN));
+                .andExpect(emptyCurrentUserCookie());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void login_LockoutPolicySucceeds_WhenPolicyIsUpdatedByApi(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void login_LockoutPolicySucceeds_WhenPolicyIsUpdatedByApi() throws Exception {
         String subdomain = generator.generate();
         IdentityZone zone = createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
 
@@ -2279,20 +2181,16 @@ public class LoginMockMvcTests {
 
         ScimUser userToLockout = createUser(scimUserProvisioning, generator, zone.getId());
 
-        attemptUnsuccessfulLogin(mockMvc, mode, 2, userToLockout.getUserName(), subdomain);
+        attemptUnsuccessfulLogin(mockMvc, 2, userToLockout.getUserName(), subdomain);
 
-        // Context path /uaa is independent of zone resolution mode (subdomain vs /z/ path).
-        // pathSuffix is the path after context (SUBDOMAIN) or after /z/{subdomain} (ZONE_PATH).
-        String expectedRedirect = mode == ZoneResolutionMode.SUBDOMAIN ? "/uaa/login?error=account_locked" :
-                "/uaa/z/" + subdomain + "/login?error=account_locked";
-        var requestBuilder = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/uaa", "/login.do")
-                .contextPath("/uaa")
-                .with(cookieCsrf())
-                .param("username", userToLockout.getUserName())
-                .param("password", userToLockout.getPassword());
-        mockMvc.perform(requestBuilder)
-                .andExpect(redirectedUrl(expectedRedirect))
-                .andExpect(emptyCurrentUserCookie(mode));
+        mockMvc.perform(post("/uaa/login.do")
+                        .contextPath("/uaa")
+                        .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"))
+                        .with(cookieCsrf())
+                        .param("username", userToLockout.getUserName())
+                        .param("password", userToLockout.getPassword()))
+                .andExpect(redirectedUrl("/uaa/login?error=account_locked"))
+                .andExpect(emptyCurrentUserCookie());
     }
 
     @Test
@@ -2355,14 +2253,14 @@ public class LoginMockMvcTests {
                 .andExpect(redirectedUrl("home"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryPageDisplayed_IfFlagIsEnabled(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryPageDisplayed_IfFlagIsEnabled() throws Exception {
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
         IdentityZone zone = setupZone(webApplicationContext, mockMvc, identityZoneProvisioning, generator, config);
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
-                        .header("Accept", TEXT_HTML))
+        mockMvc.perform(get("/login")
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(view().name("idp_discovery/email"))
                 .andExpect(content().string(containsString("Sign in")))
@@ -2371,22 +2269,21 @@ public class LoginMockMvcTests {
                 .andExpect(xpath("//input[@name='commit']/@value").string("Next"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryPageNotDisplayed_IfFlagIsEnabledAndDiscoveryUnsuccessfulPreviously(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryPageNotDisplayed_IfFlagIsEnabledAndDiscoveryUnsuccessfulPreviously() throws Exception {
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
         IdentityZone zone = setupZone(webApplicationContext, mockMvc, identityZoneProvisioning, generator, config);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login?discoveryPerformed=true")
-                        .header("Accept", TEXT_HTML))
+        mockMvc.perform(get("/login?discoveryPerformed=true")
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(view().name("idp_discovery/password"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryClientNameDisplayed_WithUTF8Characters(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryClientNameDisplayed_WithUTF8Characters() throws Exception {
         String utf8String = "\u7433\u8D3A";
         String clientName = "woohoo-" + utf8String;
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
@@ -2402,9 +2299,10 @@ public class LoginMockMvcTests {
         SavedRequest savedRequest = getSavedRequest(client);
         SessionUtils.setSavedRequestSession(session, savedRequest);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .session(session)
-                        .header("Accept", TEXT_HTML))
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(view().name("idp_discovery/email"))
                 .andExpect(content().string(containsString("Sign in to continue to " + clientName)))
@@ -2413,9 +2311,8 @@ public class LoginMockMvcTests {
                 .andExpect(xpath("//input[@name='commit']/@value").string("Next"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void accountChooserEnabled_NoSaveAccounts(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void accountChooserEnabled_NoSaveAccounts() throws Exception {
         String clientName = "woohoo";
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
@@ -2433,16 +2330,16 @@ public class LoginMockMvcTests {
         savedAccount.setOrigin("uaa");
         savedAccount.setUserId("1234-5678");
         savedAccount.setUsername("test@example.org");
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .session(session)
-                        .header("Accept", TEXT_HTML))
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(view().name("idp_discovery/email"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void accountChooserEnabled(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void accountChooserEnabled() throws Exception {
         String clientName = "woohoo";
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
@@ -2461,18 +2358,18 @@ public class LoginMockMvcTests {
         savedAccount.setOrigin("uaa");
         savedAccount.setUserId("1234-5678");
         savedAccount.setUsername("test@example.org");
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .session(session)
                         .cookie(new Cookie("Saved-Account-12345678", URLEncoder.encode(JsonUtils.writeValueAsString(savedAccount), StandardCharsets.UTF_8)))
-                        .header("Accept", TEXT_HTML))
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(view().name("idp_discovery/account_chooser"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void accountChooserWithoutDiscovery(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void accountChooserWithoutDiscovery() throws Exception {
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(false);
         config.setAccountChooserEnabled(true);
@@ -2480,17 +2377,17 @@ public class LoginMockMvcTests {
 
         MockHttpSession session = new MockHttpSession();
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .session(session)
-                        .header("Accept", TEXT_HTML))
+                        .header("Accept", TEXT_HTML)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(view().name("idp_discovery/origin"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void accountChooserWithoutDiscovery_loginWithProvidedLoginHint(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void accountChooserWithoutDiscovery_loginWithProvidedLoginHint() throws Exception {
         assumeFalse(isLimitedMode(limitedModeUaaFilter.getFilter()), "Test only runs in non limited mode.");
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(false);
@@ -2500,11 +2397,12 @@ public class LoginMockMvcTests {
         String originKey = createOIDCProvider(jdbcIdentityProviderProvisioning, generator, zone, "id_token code");
         String loginHint = "%7B%22origin%22%3A%22" + originKey + "%22%7D";
 
-        MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/origin-chooser")
+        MvcResult mvcResult = mockMvc.perform(post("/origin-chooser")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
-                        .servletPath(mode.getServletPath(zone.getSubdomain(), "/origin-chooser"))
-                        .param("login_hint", originKey))
+                        .servletPath("/origin-chooser")
+                        .param("login_hint", originKey)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andReturn();
         String location = mvcResult.getResponse().getHeader("Location");
@@ -2516,9 +2414,8 @@ public class LoginMockMvcTests {
                 .containsEntry("discoveryPerformed", "true");
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void accountChooserWithoutDiscovery_noDefaultReturnsLoginPage(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void accountChooserWithoutDiscovery_noDefaultReturnsLoginPage() throws Exception {
         assumeFalse(isLimitedMode(limitedModeUaaFilter.getFilter()), "Test only runs in non limited mode.");
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(false);
@@ -2527,10 +2424,11 @@ public class LoginMockMvcTests {
 
         createOIDCProvider(jdbcIdentityProviderProvisioning, generator, zone, "id_token code");
 
-        MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/origin-chooser")
+        MvcResult mvcResult = mockMvc.perform(post("/origin-chooser")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
-                        .servletPath(mode.getServletPath(zone.getSubdomain(), "/origin-chooser")))
+                        .servletPath("/origin-chooser")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andReturn();
         String location = mvcResult.getResponse().getHeader("Location");
@@ -2543,9 +2441,8 @@ public class LoginMockMvcTests {
                 .doesNotContainKey("login_hint");
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void emailPageIdpDiscoveryEnabled_SelfServiceLinksDisabled(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void emailPageIdpDiscoveryEnabled_SelfServiceLinksDisabled() throws Exception {
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
         config.setLinks(new Links().setSelfService(new Links.SelfService().setSelfServiceLinksEnabled(false)));
@@ -2553,13 +2450,13 @@ public class LoginMockMvcTests {
 
         MockMvcUtils.setSelfServiceLinksEnabled(webApplicationContext, IdentityZone.getUaaZoneId(), false);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login"))
+        mockMvc.perform(MockMvcRequestBuilders.get("/login")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(xpath("//div[@class='action']//a").doesNotExist());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryRedirectsToSamlExternalProvider_withClientContext(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryRedirectsToSamlExternalProvider_withClientContext() throws Exception {
         String subdomain = "test-zone-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
@@ -2567,47 +2464,45 @@ public class LoginMockMvcTests {
         String originKey = generator.generate();
         MockHttpSession session = setUpClientAndProviderForIdpDiscovery(webApplicationContext, jdbcIdentityProviderProvisioning, generator, originKey, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        mockMvc.perform(post("/login/idp_discovery")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
                         .session(session)
-                        .param("email", "marissa@test.org"))
+                        .param("email", "marissa@test.org")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/saml2/authenticate/%s".formatted(originKey)));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryRedirectsToOIDCProvider(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryRedirectsToOIDCProvider() throws Exception {
         String subdomain = "oidc-discovery-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
 
         String originKey = createOIDCProvider(jdbcIdentityProviderProvisioning, generator, zone, "id_token code");
 
-        MvcResult mvcResult = mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        MvcResult mvcResult = mockMvc.perform(post("/login/idp_discovery")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
-                        .servletPath(mode.getServletPath(zone.getSubdomain(), "/login/idp_discovery"))
-                        .param("email", "marissa@test.org"))
+                        .servletPath("/login/idp_discovery")
+                        .param("email", "marissa@test.org")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andReturn();
         String location = mvcResult.getResponse().getHeader("Location");
         Map<String, String> queryParams =
                 UriComponentsBuilder.fromUriString(location).build().getQueryParams().toSingleValueMap();
 
-        // For ZONE_PATH mode, the redirect_uri uses localhost; for SUBDOMAIN mode, it uses subdomain.localhost
-        String expectedHost = mode == ZoneResolutionMode.ZONE_PATH ? "localhost" : subdomain + ".localhost";
         assertThat(location).startsWith("http://myauthurl.com");
         assertThat(queryParams).containsEntry("client_id", "id")
                 .containsEntry("response_type", "id_token+code")
-                .containsEntry("redirect_uri", "http%3A%2F%2F" + expectedHost + "%2Flogin%2Fcallback%2F" + originKey)
+                .containsEntry("redirect_uri", "http%3A%2F%2F" + subdomain + ".localhost%2Flogin%2Fcallback%2F" + originKey)
                 .containsKey("nonce");
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void multiple_oidc_providers_use_response_type_in_url(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void multiple_oidc_providers_use_response_type_in_url() throws Exception {
         String subdomain = "oidc-idp-discovery-multi-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
@@ -2615,17 +2510,17 @@ public class LoginMockMvcTests {
         createOIDCProvider(jdbcIdentityProviderProvisioning, generator, zone, null);
         createOIDCProvider(jdbcIdentityProviderProvisioning, generator, zone, "code id_token");
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login")
+        mockMvc.perform(get("/login")
                         .header("Accept", TEXT_HTML)
-                        .servletPath(mode.getServletPath(zone.getSubdomain(), "/login")))
+                        .servletPath("/login")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("http://myauthurl.com?client_id=id&amp;response_type=code&")))
                 .andExpect(content().string(containsString("http://myauthurl.com?client_id=id&amp;response_type=code+id_token&")));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryWithNoEmailDomainMatch_withClientContext(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryWithNoEmailDomainMatch_withClientContext() throws Exception {
         String subdomain = "test-zone-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
@@ -2639,18 +2534,18 @@ public class LoginMockMvcTests {
 
         MockHttpSession session = setUpClientAndProviderForIdpDiscovery(webApplicationContext, jdbcIdentityProviderProvisioning, generator, originKey, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        mockMvc.perform(post("/login/idp_discovery")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
                         .session(session)
-                        .param("email", "marissa@other.domain"))
+                        .param("email", "marissa@other.domain")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/login?discoveryPerformed=true&email=marissa%40other.domain"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryWithMultipleEmailDomainMatches_withClientContext(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryWithMultipleEmailDomainMatches_withClientContext() throws Exception {
         String subdomain = "test-zone-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
@@ -2664,18 +2559,18 @@ public class LoginMockMvcTests {
 
         MockHttpSession session = setUpClientAndProviderForIdpDiscovery(webApplicationContext, jdbcIdentityProviderProvisioning, generator, originKey, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        mockMvc.perform(post("/login/idp_discovery")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
                         .session(session)
-                        .param("email", "marissa@test.org"))
+                        .param("email", "marissa@test.org")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/login?discoveryPerformed=true&email=marissa%40test.org"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryWithUaaFallBack_withClientContext(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryWithUaaFallBack_withClientContext() throws Exception {
         String subdomain = "test-zone-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
@@ -2684,25 +2579,26 @@ public class LoginMockMvcTests {
 
         MockHttpSession session = setUpClientAndProviderForIdpDiscovery(webApplicationContext, jdbcIdentityProviderProvisioning, generator, originKey, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        mockMvc.perform(post("/login/idp_discovery")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
                         .session(session)
-                        .param("email", "marissa@other.domain"))
+                        .param("email", "marissa@other.domain")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/login?discoveryPerformed=true&email=marissa%40other.domain"));
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login?discoveryPerformed=true&email=marissa%40other.domain")
+        mockMvc.perform(get("/login?discoveryPerformed=true&email=marissa%40other.domain")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
-                        .session(session))
+                        .session(session)
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(model().attributeExists("zone_name"))
                 .andExpect(view().name("login"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void idpDiscoveryWithLdap_withClientContext(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void idpDiscoveryWithLdap_withClientContext() throws Exception {
         String subdomain = "test-zone-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
@@ -2717,30 +2613,32 @@ public class LoginMockMvcTests {
 
         MockHttpSession session = setUpClientAndProviderForIdpDiscovery(webApplicationContext, jdbcIdentityProviderProvisioning, generator, originKey, zone);
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        mockMvc.perform(post("/login/idp_discovery")
                         .with(cookieCsrf())
                         .header("Accept", TEXT_HTML)
                         .session(session)
-                        .param("email", "marissa@testLdap.org"))
+                        .param("email", "marissa@testLdap.org")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/login?discoveryPerformed=true&email=marissa%40testLdap.org"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void passwordPageDisplayed_ifUaaIsFallbackIDPForEmailDomain(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void passwordPageDisplayed_ifUaaIsFallbackIDPForEmailDomain() throws Exception {
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
         IdentityZone zone = setupZone(webApplicationContext, mockMvc, identityZoneProvisioning, generator, config);
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        mockMvc.perform(post("/login/idp_discovery")
                         .header("Accept", TEXT_HTML)
                         .with(cookieCsrf())
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost"))
                         .param("email", "marissa@koala.com"))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/login?discoveryPerformed=true&email=marissa%40koala.com"));
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login?discoveryPerformed=true&email=marissa@koala.com")
+        mockMvc.perform(get("/login?discoveryPerformed=true&email=marissa@koala.com")
                         .with(cookieCsrf())
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost"))
                         .header("Accept", TEXT_HTML))
                 .andExpect(view().name("idp_discovery/password"))
                 .andExpect(xpath("//input[@name='password']").exists())
@@ -2767,26 +2665,26 @@ public class LoginMockMvcTests {
                 .andExpect(xpath("//div[@class='action pull-right']//a").doesNotExist());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void userNamePresentInPasswordPage(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void userNamePresentInPasswordPage() throws Exception {
         IdentityZoneConfiguration config = new IdentityZoneConfiguration();
         config.setIdpDiscoveryEnabled(true);
         IdentityZone zone = setupZone(webApplicationContext, mockMvc, identityZoneProvisioning, generator, config);
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.POST, "/login/idp_discovery")
+        mockMvc.perform(post("/login/idp_discovery")
                         .with(cookieCsrf())
-                        .param("email", "test@email.com"))
+                        .param("email", "test@email.com")
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("/login?discoveryPerformed=true&email=test%40email.com"));
 
-        mockMvc.perform(mode.createRequestBuilder(zone.getSubdomain(), HttpMethod.GET, "/login?discoveryPerformed=true&email=test@email.com")
-                        .with(cookieCsrf()))
+        mockMvc.perform(get("/login?discoveryPerformed=true&email=test@email.com")
+                        .with(cookieCsrf())
+                        .with(new SetServerNameRequestPostProcessor(zone.getSubdomain() + ".localhost")))
                 .andExpect(xpath("//input[@name='username']/@value").string("test@email.com"));
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void authorizeForClientWithIdpNotAllowed(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void authorizeForClientWithIdpNotAllowed() throws Exception {
         String subdomain = "idp-not-allowed-" + generator.generate().toLowerCase();
         IdentityZone zone = MultitenancyFixture.identityZone(subdomain, subdomain);
         zone = createOtherIdentityZone(zone.getSubdomain(), mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
@@ -2796,20 +2694,18 @@ public class LoginMockMvcTests {
         ScimUser user = createUser(scimUserProvisioning, generator, zone.getId());
         MockHttpSession session = new MockHttpSession();
 
-        // For ZONE_PATH mode, the zone prefix is in the path, so we don't use a context path
-        String loginPath = mode == ZoneResolutionMode.ZONE_PATH ? "/login.do" : "/uaa/login.do";
-        String expectedRedirect = mode == ZoneResolutionMode.ZONE_PATH ? "/" : "/uaa/";
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, loginPath)
+        SetServerNameRequestPostProcessor inZone = new SetServerNameRequestPostProcessor(subdomain + ".localhost");
+
+        MockHttpServletRequestBuilder post = post("/uaa/login.do")
+                .with(inZone)
                 .with(cookieCsrf())
+                .contextPath("/uaa")
                 .session(session)
                 .param("username", user.getUserName())
                 .param("password", user.getPassword());
-        if (mode == ZoneResolutionMode.SUBDOMAIN) {
-            post.contextPath("/uaa");
-        }
 
         mockMvc.perform(post)
-                .andExpect(redirectedUrl(expectedRedirect));
+                .andExpect(redirectedUrl("/uaa/"));
         // authorize for client that does not allow that idp
 
         String clientId = "different-provider-client";
@@ -2823,17 +2719,15 @@ public class LoginMockMvcTests {
         client.setRegisteredRedirectUri(registeredRedirectUris);
         MockMvcUtils.createClient(webApplicationContext, client, zone);
 
-        MockHttpServletRequestBuilder authorize = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/authorize")
+        MockHttpServletRequestBuilder authorize = get("/oauth/authorize")
+                .with(inZone)
                 .session(session)
                 .param("client_id", "different-provider-client")
                 .param("response_type", "code")
                 .param("client_secret", "secret")
                 .param("garbage", "this-should-be-preserved");
 
-        // For ZONE_PATH mode, the URL uses localhost with zone path; for SUBDOMAIN mode, it uses subdomain.localhost
-        String expectedUrl = mode == ZoneResolutionMode.ZONE_PATH
-                ? "http://localhost/z/" + subdomain + "/oauth/authorize?client_id=different-provider-client&response_type=code&client_secret=secret&garbage=this-should-be-preserved"
-                : "http://" + subdomain + ".localhost/oauth/authorize?client_id=different-provider-client&response_type=code&client_secret=secret&garbage=this-should-be-preserved";
+        String expectedUrl = "http://" + subdomain + ".localhost/oauth/authorize?client_id=different-provider-client&response_type=code&client_secret=secret&garbage=this-should-be-preserved";
         String html = mockMvc.perform(authorize)
                 .andDo(print())
                 .andExpect(status().isUnauthorized())
@@ -2927,34 +2821,26 @@ public class LoginMockMvcTests {
         }
     }
 
-    private static void attemptUnsuccessfulLogin(MockMvc mockMvc, ZoneResolutionMode mode, int numberOfAttempts, String username, String subdomain) throws Exception {
-        String expectedRedirect = mode == ZoneResolutionMode.SUBDOMAIN ? "/uaa/login?error=login_failure" :
-                "/uaa/z/" + subdomain + "/login?error=login_failure";
-
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/uaa", "/login.do")
-                .contextPath("/uaa")
+    private static void attemptUnsuccessfulLogin(MockMvc mockMvc, int numberOfAttempts, String username, String subdomain) throws Exception {
+        String requestDomain = subdomain.isEmpty() ? "localhost" : subdomain + ".localhost";
+        MockHttpServletRequestBuilder post = post("/uaa/login.do")
+                .with(new SetServerNameRequestPostProcessor(requestDomain))
                 .with(cookieCsrf())
+                .contextPath("/uaa")
                 .param("username", username)
                 .param("password", "wrong_password");
         for (int i = 0; i < numberOfAttempts; i++) {
             mockMvc.perform(post)
-                    .andExpect(redirectedUrl(expectedRedirect))
-                    .andExpect(emptyCurrentUserCookie(mode));
+                    .andExpect(redirectedUrl("/uaa/login?error=login_failure"))
+                    .andExpect(emptyCurrentUserCookie());
         }
     }
 
-    private static ResultMatcher emptyCurrentUserCookie(ZoneResolutionMode mode) {
+    private static ResultMatcher emptyCurrentUserCookie() {
         return result -> {
             cookie().value("Current-User", isEmptyOrNullString()).match(result);
             cookie().maxAge("Current-User", 0).match(result);
-            String expectedPath = mode == ZoneResolutionMode.ZONE_PATH ? null : "/";
-            if (expectedPath != null) {
-                cookie().path("Current-User", expectedPath).match(result);
-            } else {
-                Cookie currentUserCookie = result.getResponse().getCookie("Current-User");
-                assertThat(currentUserCookie).isNotNull();
-                assertThat(currentUserCookie.getPath()).startsWith("/z/");
-            }
+            cookie().path("Current-User", "/").match(result);
         };
     }
 

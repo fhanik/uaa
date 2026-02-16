@@ -22,10 +22,7 @@ import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.impl.config.IdentityProviderBootstrap;
 import org.cloudfoundry.identity.uaa.login.Prompt;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.IdentityZoneCreationResult;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.common.util.RandomValueStringGenerator;
-import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
 import org.cloudfoundry.identity.uaa.provider.AbstractExternalOAuthIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.provider.AbstractIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
@@ -51,14 +48,9 @@ import org.cloudfoundry.identity.uaa.zone.MultitenancyFixture;
 import org.cloudfoundry.identity.uaa.zone.event.IdentityProviderModifiedEvent;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.MediaType;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -82,8 +74,6 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.LDAP;
-import static org.cloudfoundry.identity.uaa.mock.clients.AdminClientCreator.SECRET;
-import static org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.createClient;
 import static org.cloudfoundry.identity.uaa.provider.ExternalIdentityProviderDefinition.USER_NAME_ATTRIBUTE_NAME;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -91,7 +81,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // TODO: Check to see if the helper methods can be moved to MockMvcUtils
@@ -855,66 +844,5 @@ class IdentityProviderEndpointsMockMvcTests {
 
         ScimUser user = MockMvcUtils.createAdminForZone(mockMvc, adminToken, "idps.write,idps.read", IdentityZone.getUaaZoneId());
         return MockMvcUtils.getUserOAuthAccessToken(mockMvc, client.getClientId(), client.getClientSecret(), user.getUserName(), "secr3T", "idps.read idps.write");
-    }
-
-    @Nested
-    @DefaultTestContext
-    class IdentityProvidersZonePathSupport {
-
-        @ParameterizedTest
-        @EnumSource(ZoneResolutionMode.class)
-        void get_identity_providers_list_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
-            String subdomain = RandomStringUtils.randomAlphabetic(8).toLowerCase();
-            IdentityZoneCreationResult creationResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
-            String token = getZoneUaaAdminToken(creationResult);
-            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/identity-providers/")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(APPLICATION_JSON)
-                        .accept(MediaType.APPLICATION_JSON))
-                    .andDo(print())
-                    .andExpect(status().isOk());
-        }
-
-        @ParameterizedTest
-        @EnumSource(ZoneResolutionMode.class)
-        void get_identity_provider_by_id_responds_for_zone_path(ZoneResolutionMode mode) throws Exception {
-            String subdomain = RandomStringUtils.randomAlphabetic(8).toLowerCase();
-            IdentityZoneCreationResult creationResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, null, IdentityZoneHolder.getCurrentZoneId());
-
-            String token = getZoneUaaAdminToken(creationResult);
-
-            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/identity-providers/")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(APPLICATION_JSON)
-                        .accept(MediaType.APPLICATION_JSON))
-                    .andDo(print())
-                    .andExpect(status().isOk());
-        }
-    }
-
-    private String getZoneUaaAdminToken(IdentityZoneCreationResult creationResult) throws Exception {
-        String zonedClientId = "idpZonePathTest" + System.nanoTime();
-        String zonedClientSecret = SECRET;
-        MockMvcUtils.createClient(
-                mockMvc,
-                creationResult.getZoneAdminToken(),
-                zonedClientId,
-                zonedClientSecret,
-                Collections.singleton("oauth"),
-                Collections.emptyList(),
-                List.of("client_credentials"),
-                "uaa.admin",
-                Collections.emptySet(),
-                creationResult.getIdentityZone()
-        );
-        String token = MockMvcUtils.getClientCredentialsOAuthAccessToken(
-                mockMvc,
-                zonedClientId,
-                zonedClientSecret,
-                "uaa.admin",
-                creationResult.getIdentityZone().getSubdomain(),
-                true
-        );
-        return token;
     }
 }

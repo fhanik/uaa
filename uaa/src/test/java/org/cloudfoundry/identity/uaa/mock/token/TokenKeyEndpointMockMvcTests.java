@@ -7,7 +7,7 @@ import org.cloudfoundry.identity.uaa.oauth.common.util.RandomValueStringGenerato
 import org.cloudfoundry.identity.uaa.oauth.token.VerificationKeyResponse;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.MapCollector;
-import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.util.SetServerNameRequestPostProcessor;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneProvisioning;
@@ -15,10 +15,8 @@ import org.cloudfoundry.identity.uaa.zone.MultitenantClientServices;
 import org.cloudfoundry.identity.uaa.zone.MultitenantJdbcClientDetailsService;
 import org.cloudfoundry.identity.uaa.zone.TokenPolicy;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -89,12 +87,12 @@ class TokenKeyEndpointMockMvcTests {
         setSigningKeyAndDefaultClient(SIGN_KEY);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKey(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKey() throws Exception {
         MvcResult result = mockMvc
                 .perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_key")
+                        get("/token_key")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON)
                                 .header("Authorization", getBasicAuth(defaultClient))
                 )
@@ -105,33 +103,33 @@ class TokenKeyEndpointMockMvcTests {
         validateKey(key);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKeyReturnETag(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKeyReturnETag() throws Exception {
         mockMvc.perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_key")
+                        get("/token_key")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(header().string("ETag", any(String.class)))
                 .andReturn();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKeyReturns304IfResourceUnchanged(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKeyReturns304IfResourceUnchanged() throws Exception {
         mockMvc.perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_key")
+                        get("/token_key")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .header("If-None-Match", testZone.getLastModified().getTime()))
                 .andExpect(status().isNotModified())
                 .andReturn();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKey_IsNotFromDefaultZone(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKey_IsNotFromDefaultZone() throws Exception {
         MvcResult nonDefaultZoneResponse = mockMvc
                 .perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_key")
+                        get("/token_key")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON)
                                 .header("Authorization", getBasicAuth(defaultClient))
                 )
@@ -155,9 +153,8 @@ class TokenKeyEndpointMockMvcTests {
         assertThat(defaultKeyResponse.getValue()).isNotEqualTo(nonDefaultKeyResponse.getValue());
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKey_WhenKeysAreAsymmetric_asAuthenticatedUser(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKey_WhenKeysAreAsymmetric_asAuthenticatedUser() throws Exception {
         UaaClientDetails client = new UaaClientDetails(new RandomValueStringGenerator().generate(),
                 "",
                 "foo,bar",
@@ -167,7 +164,8 @@ class TokenKeyEndpointMockMvcTests {
         webApplicationContext.getBean(MultitenantClientServices.class).addClientDetails(client, testZone.getSubdomain());
 
         MvcResult result = mockMvc.perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_key")
+                        get("/token_key")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON)
                                 .header("Authorization", getBasicAuth(client)))
                 .andExpect(status().isOk())
@@ -177,9 +175,8 @@ class TokenKeyEndpointMockMvcTests {
         validateKey(key);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKey_WhenKeysAreAsymmetric_asAuthenticatedUser_withoutCorrectScope(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKey_WhenKeysAreAsymmetric_asAuthenticatedUser_withoutCorrectScope() throws Exception {
         setSigningKeyAndDefaultClient("key");
         UaaClientDetails client = new UaaClientDetails(new RandomValueStringGenerator().generate(),
                 "",
@@ -191,7 +188,8 @@ class TokenKeyEndpointMockMvcTests {
 
         mockMvc
                 .perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_key")
+                        get("/token_key")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON)
                                 .header("Authorization", getBasicAuth(client))
                 )
@@ -199,12 +197,12 @@ class TokenKeyEndpointMockMvcTests {
                 .andReturn();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKey_asUnauthenticatedUser(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKey_asUnauthenticatedUser() throws Exception {
         MvcResult result = mockMvc
                 .perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_key")
+                        get("/token_key")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON)
                 )
                 .andExpect(status().isOk())
@@ -214,12 +212,12 @@ class TokenKeyEndpointMockMvcTests {
         validateKey(key);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKeys(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKeys() throws Exception {
         MvcResult result = mockMvc
                 .perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_keys")
+                        get("/token_keys")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON)
                                 .header("Authorization", getBasicAuth(defaultClient))
                 )
@@ -230,33 +228,33 @@ class TokenKeyEndpointMockMvcTests {
         validateKeys(keys);
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKeysReturnETag(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKeysReturnETag() throws Exception {
         mockMvc.perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_keys")
+                        get("/token_keys")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(header().string("ETag", any(String.class)))
                 .andReturn();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKeysReturns304IfResourceUnchanged(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKeysReturns304IfResourceUnchanged() throws Exception {
         mockMvc.perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_keys")
+                        get("/token_keys")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .header("If-None-Match", testZone.getLastModified().getTime()))
                 .andExpect(status().isNotModified())
                 .andReturn();
     }
 
-    @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void checkTokenKeys_asUnauthenticatedUser(ZoneResolutionMode mode) throws Exception {
+    @Test
+    void checkTokenKeys_asUnauthenticatedUser() throws Exception {
         MvcResult result = mockMvc
                 .perform(
-                        mode.createRequestBuilder(testZone.getSubdomain(), HttpMethod.GET, "/token_keys")
+                        get("/token_keys")
+                                .with(new SetServerNameRequestPostProcessor(testZone.getSubdomain() + ".localhost"))
                                 .accept(MediaType.APPLICATION_JSON)
                 )
                 .andExpect(status().isOk())

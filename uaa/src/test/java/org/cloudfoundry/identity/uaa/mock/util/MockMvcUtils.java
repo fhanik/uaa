@@ -69,7 +69,6 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.event.ApplicationEventMulticaster;
-import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -123,8 +122,6 @@ import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -135,96 +132,6 @@ public final class MockMvcUtils {
 
     private MockMvcUtils() {
         throw new java.lang.UnsupportedOperationException("This is a utility class and cannot be instantiated");
-    }
-
-    /**
-     * Mode for resolving identity zone in tests: by host subdomain or by path prefix {@code /z/{subdomain}/}.
-     * The test passes the path suffix (e.g. {@code "/oauth/token"});
-     * the mode constructs the full path.
-     */
-    public enum ZoneResolutionMode {
-        SUBDOMAIN {
-            @Override
-            public MockHttpServletRequestBuilder createRequestBuilder(String subdomain, HttpMethod method, String contextPath, String pathSuffix) {
-                if (StringUtils.hasText(subdomain)) {
-                    return requestBuilderForMethod(method, contextPath + pathSuffix)
-                            .with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
-                } else {
-                    return requestBuilderForMethod(method, contextPath + pathSuffix);
-                }
-            }
-
-            @Override
-            public String getServletPath(String subdomain, String pathSuffix) {
-                return pathSuffix;
-            }
-        },
-        ZONE_PATH {
-            @Override
-            public MockHttpServletRequestBuilder createRequestBuilder(String subdomain, HttpMethod method, String contextPath, String pathSuffix) {
-                if (StringUtils.hasText(subdomain)) {
-                    return requestBuilderForMethod(method, contextPath + "/z/{subdomain}" + pathSuffix, subdomain);
-                } else {
-                    return requestBuilderForMethod(method, contextPath + pathSuffix);
-                }
-            }
-
-            @Override
-            public String getServletPath(String subdomain, String pathSuffix) {
-                if (StringUtils.hasText(subdomain)) {
-                    return "/z/" + subdomain + pathSuffix;
-                } else {
-                    return pathSuffix;
-                }
-            }
-        };
-
-        public  MockHttpServletRequestBuilder createRequestBuilder(String subdomain, HttpMethod method, String pathSuffix) {
-            return this.createRequestBuilder(subdomain, method, "", pathSuffix);
-        }
-        public abstract MockHttpServletRequestBuilder createRequestBuilder(
-                String subdomain,
-                HttpMethod method,
-                String contextPath,
-                String pathSuffix
-        );
-
-        /**
-         * Returns the servlet path for the given subdomain and path suffix.
-         * For SUBDOMAIN mode, this is just the pathSuffix.
-         * For ZONE_PATH mode, this includes the /z/{subdomain} prefix.
-         */
-        public abstract String getServletPath(String subdomain, String pathSuffix);
-    }
-
-    /**
-     * Builds a MockHttpServletRequestBuilder for the given HTTP method and path.
-     *
-     * @param method   the HTTP method (GET, POST, PUT, DELETE)
-     * @param path     the path (may contain path variables like {@code /z/{subdomain}/oauth/token})
-     * @param pathVars optional path variable values
-     * @return the request builder
-     */
-    public static MockHttpServletRequestBuilder requestBuilderForMethod(HttpMethod method, String path, Object... pathVars) {
-        if (method == HttpMethod.GET) {
-            return get(path, pathVars);
-        }
-        if (method == HttpMethod.POST) {
-            return post(path, pathVars);
-        }
-        if (method == HttpMethod.PUT) {
-            return put(path, pathVars);
-        }
-        if (method == HttpMethod.PATCH) {
-            return patch(path, pathVars);
-        }
-        if (method == HttpMethod.DELETE) {
-            return delete(path, pathVars);
-        }
-        if (method == HttpMethod.OPTIONS) {
-            return options(path, pathVars);
-        }
-        throw new IllegalArgumentException("Unsupported method: " + method);
     }
 
     private static final String SIMPLESAMLPHP_UAA_ACCEPTANCE = "http://simplesamlphp.uaa-acceptance.cf-app.com";
@@ -681,12 +588,10 @@ public final class MockMvcUtils {
     }
 
     public static ScimUser createUserInZone(MockMvc mockMvc, String accessToken, ScimUser user, String subdomain, String zoneId) throws Exception {
-        return createUserInZone(ZoneResolutionMode.SUBDOMAIN, mockMvc, accessToken, user, subdomain, zoneId);
-    }
-
-    public static ScimUser createUserInZone(ZoneResolutionMode mode, MockMvc mockMvc, String accessToken, ScimUser user, String subdomain, String zoneId) throws Exception {
-        MockHttpServletRequestBuilder post = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/Users");
+        String requestDomain = subdomain.isEmpty() ? "localhost" : subdomain + ".localhost";
+        MockHttpServletRequestBuilder post = post("/Users");
         post.header("Authorization", "Bearer " + accessToken)
+                .with(new SetServerNameRequestPostProcessor(requestDomain))
                 .contentType(APPLICATION_JSON)
                 .content(JsonUtils.writeValueAsBytes(user));
         if (hasText(zoneId)) {
@@ -698,12 +603,10 @@ public final class MockMvcUtils {
     }
 
     public static ScimUser readUserInZone(MockMvc mockMvc, String accessToken, String userId, String subdomain, String zoneId) throws Exception {
-        return readUserInZone(ZoneResolutionMode.SUBDOMAIN, mockMvc, accessToken, userId, subdomain, zoneId);
-    }
-
-    public static ScimUser readUserInZone(ZoneResolutionMode mode, MockMvc mockMvc, String accessToken, String userId, String subdomain, String zoneId) throws Exception {
-        MockHttpServletRequestBuilder get = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/Users/" + userId);
+        String requestDomain = subdomain.isEmpty() ? "localhost" : subdomain + ".localhost";
+        MockHttpServletRequestBuilder get = get("/Users/" + userId);
         get.header("Authorization", "Bearer " + accessToken)
+                .with(new SetServerNameRequestPostProcessor(requestDomain))
                 .accept(APPLICATION_JSON);
         if (hasText(zoneId)) {
             get.header(IdentityZoneSwitchingFilter.HEADER, zoneId);
@@ -1160,23 +1063,16 @@ public final class MockMvcUtils {
             String scope,
             String subdomain,
             boolean opaque) throws Exception {
-        return getClientCredentialsOAuthAccessToken(ZoneResolutionMode.SUBDOMAIN, mockMvc, clientId, clientSecret, scope, subdomain, opaque);
-    }
-
-    public static String getClientCredentialsOAuthAccessToken(ZoneResolutionMode mode,
-            MockMvc mockMvc,
-            String clientId,
-            String clientSecret,
-            String scope,
-            String subdomain,
-            boolean opaque) throws Exception {
-        MockHttpServletRequestBuilder oauthTokenPost = mode.createRequestBuilder(subdomain != null ? subdomain : "", HttpMethod.POST, "/oauth/token")
+        MockHttpServletRequestBuilder oauthTokenPost = post("/oauth/token")
                 .with(httpBasic(clientId, clientSecret))
                 .param("grant_type", "client_credentials")
                 .param("client_id", clientId)
                 .param("revocable", "true");
-        if (hasText(scope)) {
+        if (!hasText(scope)) {
             oauthTokenPost.param("scope", scope);
+        }
+        if (subdomain != null && !subdomain.isEmpty()) {
+            oauthTokenPost.with(new SetServerNameRequestPostProcessor(subdomain + ".localhost"));
         }
         if (opaque) {
             oauthTokenPost.param(TokenConstants.REQUEST_TOKEN_FORMAT, OPAQUE.getStringValue());
@@ -1440,19 +1336,10 @@ public final class MockMvcUtils {
 
     public static class PredictableGenerator extends RandomValueStringGenerator {
         public AtomicInteger counter = new AtomicInteger(1);
-        private final String prefix;
-
-        public PredictableGenerator() {
-            this("test");
-        }
-
-        public PredictableGenerator(String prefix) {
-            this.prefix = prefix;
-        }
 
         @Override
         public String generate() {
-            return prefix + counter.incrementAndGet();
+            return "test" + counter.incrementAndGet();
         }
     }
 }
