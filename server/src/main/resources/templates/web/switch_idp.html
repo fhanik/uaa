@@ -12,7 +12,7 @@
 <div class="panel-container" layout:fragment="page-content">
     <div class="panel">
             <p>
-                <th:block th:text="${client_display_name}">Cloudbees</th:block> does not support your identity provider. To log into an identity provider supported by the application, <a th:href="@{/logout.do(redirect=${redirect})}">click here</a>.
+                <th:block th:text="${client_display_name}">Cloudbees</th:block> does not support your identity provider. To log into an identity provider supported by the application, <a th:href="${logoutUrl}">click here</a>.
             </p>
     </div>
 </div>

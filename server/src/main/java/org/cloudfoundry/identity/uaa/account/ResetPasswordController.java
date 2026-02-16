@@ -174,6 +174,7 @@ public class ResetPasswordController {
 
     @GetMapping(value = {"/reset_password", "/z/{subdomain}/reset_password"}, params = {"code"})
     public String resetPasswordPage(Model model,
+            HttpServletRequest request,
             HttpServletResponse response,
             @RequestParam("code") String code) {
 
@@ -188,6 +189,8 @@ public class ResetPasswordController {
             model.addAttribute("code", newCode);
             model.addAttribute("email", uaaUser.getEmail());
             model.addAttribute("username", uaaUser.getUsername());
+            String pathPrefix = UaaUrlUtils.getZonePathPrefix(request);
+            model.addAttribute("formAction", StringUtils.hasText(pathPrefix) ? pathPrefix + "/reset_password.do" : "/reset_password.do");
             return "reset_password";
         }
     }

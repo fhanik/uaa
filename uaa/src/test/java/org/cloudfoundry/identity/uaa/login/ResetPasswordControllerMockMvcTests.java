@@ -544,9 +544,12 @@ public class ResetPasswordControllerMockMvcTests {
                 .andExpect(redirectedUrl("email_sent?code=reset_password"));
 
         String code = "fp-" + subdomain + generator.counter.get();
+        String expectedLoginRedirect = mode == ZoneResolutionMode.ZONE_PATH
+                ? "/z/" + subdomain + "/login?success=password_reset"
+                : "/login?success=password_reset";
         mockMvc.perform(createChangePasswordRequest(user, code, true, "secret1", "secret1", mode, subdomain))
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("/login?success=password_reset"));
+                .andExpect(redirectedUrl(expectedLoginRedirect));
     }
 
     @ParameterizedTest
@@ -564,13 +567,19 @@ public class ResetPasswordControllerMockMvcTests {
             PasswordChange change = new PasswordChange(user.getId(), user.getUserName(), user.getPasswordLastModified(), "", "");
             ExpiringCode code = codeStore.generateCode(JsonUtils.writeValueAsString(change), new Timestamp(System.currentTimeMillis() + UaaResetPasswordService.PASSWORD_RESET_LIFETIME), FORGOT_PASSWORD_INTENT_PREFIX + user.getId(), zone.getId());
 
+            String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/reset_password.do" : "/reset_password.do";
+
             MockHttpServletRequestBuilder getRequest = mode.createRequestBuilder(subdomain, HttpMethod.GET, "/reset_password")
                     .param("code", code.getCode())
                     .accept(MediaType.TEXT_HTML);
 
             mockMvc.perform(getRequest)
                     .andExpect(status().isOk())
-                    .andExpect(content().string(containsString("reset_password")));
+                    .andExpect(view().name("reset_password"))
+                    .andExpect(content().string(containsString("Reset Password")))
+                    .andExpect(content().string(containsString("Username: " + user.getUserName())))
+                    .andExpect(content().string(containsString("Create new password")))
+                    .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")));
         } finally {
             IdentityZoneHolder.set(previousZone);
         }

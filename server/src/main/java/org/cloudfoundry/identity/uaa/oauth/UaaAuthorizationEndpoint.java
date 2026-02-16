@@ -89,6 +89,9 @@ import static org.cloudfoundry.identity.uaa.oauth.token.TokenConstants.GRANT_TYP
 import static org.cloudfoundry.identity.uaa.util.JsonUtils.hasText;
 import static org.cloudfoundry.identity.uaa.util.UaaUrlUtils.addFragmentComponent;
 import static org.cloudfoundry.identity.uaa.util.UaaUrlUtils.addQueryParameter;
+import static org.cloudfoundry.identity.uaa.util.UaaUrlUtils.getZonePathPrefix;
+
+import java.nio.charset.StandardCharsets;
 import static org.cloudfoundry.identity.uaa.oauth.common.util.OAuth2Utils.SCOPE_PREFIX;
 
 /**
@@ -361,6 +364,11 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint implements Authen
         String queryString = UaaHttpRequestUtils.paramsToQueryString(request.getParameterMap());
         String redirectUri = request.getRequestURL() + "?" + queryString;
         model.put("redirect", redirectUri);
+
+        String pathPrefix = getZonePathPrefix(request);
+        model.put("pathPrefix", pathPrefix);
+        String logoutPath = StringUtils.hasText(pathPrefix) ? pathPrefix + "/logout.do" : "/logout.do";
+        model.put("logoutUrl", logoutPath + "?redirect=" + UriUtils.encode(redirectUri, StandardCharsets.UTF_8));
 
         model.put("error", "The application is not authorized for your account.");
         model.put("error_message_code", "login.invalid_idp");

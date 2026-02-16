@@ -333,18 +333,19 @@ class ResetPasswordControllerTest extends TestClassNullifier {
     @EnumSource(RequestPathMode.class)
     void resetPasswordPage(RequestPathMode mode) throws Exception {
         String pathPrefix = pathPrefixFor(mode);
+        String expectedFormAction = pathPrefix.isEmpty() ? "/reset_password.do" : pathPrefix + "/reset_password.do";
         IdentityZone zone = IdentityZoneHolder.get();
         ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, zone.getId());
-        var result = mockMvc.perform(get(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", code.getCode()))
+        mockMvc.perform(get(pathPrefix + "/reset_password").param("email", "user@example.com").param("code", code.getCode()))
                 .andExpect(status().isOk())
                 .andExpect(view().name("reset_password"))
                 .andExpect(model().attribute("email", "email"))
-                .andExpect(model().attribute("username", "username"));
-        if (mode == RequestPathMode.DEFAULT) {
-            result.andDo(print())
-                    .andExpect(content().string(containsString("<div class=\"email-display\">Username: username</div>")))
-                    .andExpect(content().string(containsString("<input type=\"hidden\" name=\"username\" value=\"username\"/>")));
-        }
+                .andExpect(model().attribute("username", "username"))
+                .andExpect(model().attribute("formAction", expectedFormAction))
+                .andExpect(content().string(containsString("Reset Password")))
+                .andExpect(content().string(containsString("<div class=\"email-display\">Username: username</div>")))
+                .andExpect(content().string(containsString("<input type=\"hidden\" name=\"username\" value=\"username\"/>")))
+                .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")));
     }
 
     private String pathPrefixFor(RequestPathMode mode) {

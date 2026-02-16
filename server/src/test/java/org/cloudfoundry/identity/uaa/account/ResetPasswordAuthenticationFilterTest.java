@@ -194,7 +194,7 @@ class ResetPasswordAuthenticationFilterTest {
         filter.doFilterInternal(zonePathRequest, response, chain);
 
         verify(service, times(1)).resetPassword(any(ExpiringCode.class), eq(password));
-        verify(response, times(1)).sendRedirect(zonePathRequest.getContextPath() + "/login?success=password_reset");
+        verify(response, times(1)).sendRedirect(zonePathRequest.getContextPath() + "/z/testzone/login?success=password_reset");
         verify(chain, times(0)).doFilter(any(), any());
     }
 

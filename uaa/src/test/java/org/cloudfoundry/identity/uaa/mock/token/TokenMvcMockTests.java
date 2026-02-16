@@ -156,6 +156,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 @TestPropertySource(properties = {"uaa.url=https://localhost:8080/uaa", "jwt.token.refresh.format=jwt"})
 // public for LimitedModeTokenMockMvcTests
@@ -1106,8 +1107,10 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 Collections.singletonList(provider.getOriginKey()));
 
         String clientId3 = "testclient" + generator.generate();
+        String client3DisplayName = "Switch IDP Test App";
         setUpClients(clientId3, scopes, scopes, "authorization_code,password", true, TEST_REDIRECT_URI,
-                Collections.singletonList(OriginKeys.LOGIN_SERVER));
+                Collections.singletonList(OriginKeys.LOGIN_SERVER), -1, null,
+                Collections.singletonMap(ClientConstants.CLIENT_NAME, client3DisplayName));
 
         String username = "testuser" + generator.generate();
         String userScopes = "space.1.developer,space.2.developer,org.1.reader,org.2.reader,org.12345.admin,scope.one,scope.two,scope.three,openid";
@@ -1137,16 +1140,25 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
                 .andExpect(status().isFound())
                 .andReturn();
 
-        //other provider, not ok
+        //other provider, not ok - switch_idp view is shown with client display name and logout link
+        String expectedLogoutPath = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/logout.do" : "/logout.do";
         mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/oauth/authorize")
                         .session(session)
                         .param(OAuth2Utils.RESPONSE_TYPE, "code")
                         .param(OAuth2Utils.STATE, state)
                         .param(OAuth2Utils.CLIENT_ID, clientId3)
-                        .param(OAuth2Utils.REDIRECT_URI, TEST_REDIRECT_URI))
+                        .param(OAuth2Utils.REDIRECT_URI, TEST_REDIRECT_URI)
+                        .accept(MediaType.TEXT_HTML))
                 .andExpect(status().isUnauthorized())
+                .andExpect(view().name("switch_idp"))
                 .andExpect(model().attributeExists("error"))
-                .andExpect(model().attribute("error_message_code", "login.invalid_idp"));
+                .andExpect(model().attribute("error_message_code", "login.invalid_idp"))
+                .andExpect(model().attribute("client_display_name", client3DisplayName))
+                .andExpect(content().string(containsString(client3DisplayName)))
+                .andExpect(content().string(containsString("does not support your identity provider")))
+                .andExpect(content().string(containsString("click here")))
+                .andExpect(content().string(containsString(expectedLogoutPath)))
+                .andExpect(content().string(containsString("redirect=")));
 
         URL url = new URL(result.getResponse().getHeader("Location").replace("redirect#", "redirect?"));
         Map query = splitQuery(url);
