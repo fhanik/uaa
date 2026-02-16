@@ -204,6 +204,20 @@ class HomeControllerViewTests extends TestClassNullifier {
                 .andExpect(content().string(containsString(expectedHref(mode, "/logout.do"))));
     }
 
+    /**
+     * Backwards compatibility: when UAA is deployed with context path /uaa (e.g. integration tests),
+     * nav fragment must render profile and logout links with /uaa prefix so they point to the same app.
+     */
+    @ParameterizedTest
+    @EnumSource(value = ZoneRequestPathMode.class, names = {"DEFAULT"})
+    void homePageWithContextPath_containsNavLinksWithContextPath(ZoneRequestPathMode mode) throws Exception {
+        mode.setZone();
+        mockMvc.perform(get("/uaa/home").contextPath("/uaa"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("href=\"/uaa/profile\"")))
+                .andExpect(content().string(containsString("href=\"/uaa/logout.do\"")));
+    }
+
     @ParameterizedTest
     @EnumSource(ZoneRequestPathMode.class)
     void errorPageContainsCorrectNavLinks(ZoneRequestPathMode mode) throws Exception {

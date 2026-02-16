@@ -10,6 +10,14 @@ There are two types of tests:
 - Integration tests, which launch the UAA application and run web-based tests the running app. Those can be run with
   `./gradlew integrationTest`
 
+## Backward compatibility and integration tests
+
+**Integration tests must not be modified** to accommodate new behaviour or fixes. They are the **backward-compatibility contract** for UAA: they encode the behaviour that deployers and clients rely on (e.g. login form action under a context path, redirects, link URLs). When adding features (e.g. zone-path awareness, new endpoints, or UI changes), **change the implementation** so that existing integration tests continue to pass **without any edits** to the integration test code.
+
+- **Do not change integration test assertions or expectations** to make a new implementation pass. If a test fails, fix the production code (e.g. include context path in form actions and links when UAA is deployed under `/uaa`) so that the existing test passes unchanged.
+- **Reference for last known compatible state:** commit `2c62ae1360b711037ea5424d26ec6544caa07af2` was verified as backwards compatible. Use it as a reference when in doubt.
+- Integration tests live under `uaa/src/test/java/org/cloudfoundry/identity/uaa/integration/`. Add or extend **unit tests** (e.g. MockMvc tests) to cover new behaviour; keep integration tests as the stable contract.
+
 ## Helper scripts
 
 There are helper scripts, `run-unit-tests.sh` and `run-integration-tests.sh`, which run the tests inside a docker

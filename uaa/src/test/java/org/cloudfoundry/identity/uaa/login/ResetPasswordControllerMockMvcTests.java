@@ -504,6 +504,45 @@ public class ResetPasswordControllerMockMvcTests {
                 .andExpect(model().attribute("redirect_uri", "http://example.com"));
     }
 
+    /**
+     * Forgot password page must be zone-path aware: form action and "Back to Sign In" link
+     * must use the zone path prefix when present.
+     * Passes for SUBDOMAIN (no /z/ path); will pass for ZONE_PATH once forgot_password.html is made zone-aware.
+     */
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void forgot_password_page_has_zone_aware_form_action_and_login_link(ZoneResolutionMode mode) throws Exception {
+        String subdomain = mode == ZoneResolutionMode.ZONE_PATH
+                ? subdomainGenerator.generate().toLowerCase()
+                : "";
+        if (mode == ZoneResolutionMode.ZONE_PATH) {
+            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, IdentityZoneHolder.getCurrentZoneId());
+        }
+
+        String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/forgot_password.do" : "/forgot_password.do";
+        String expectedLoginPath = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/login" : "/login";
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/forgot_password")
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(view().name("forgot_password"))
+                .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")))
+                .andExpect(content().string(containsString(expectedLoginPath)));
+    }
+
+    /**
+     * Backwards compatibility: when UAA is deployed with context path /uaa (e.g. integration tests),
+     * forgot_password page must render form action and login link with /uaa prefix.
+     */
+    @Test
+    void forgotPasswordPageWithContextPath_returnsFormActionAndLoginLinkWithContextPath() throws Exception {
+        mockMvc.perform(get("/uaa/forgot_password").contextPath("/uaa").accept(MediaType.TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(view().name("forgot_password"))
+                .andExpect(content().string(containsString("action=\"/uaa/forgot_password.do\"")))
+                .andExpect(content().string(containsString("/uaa/login")));
+    }
+
     @ParameterizedTest
     @EnumSource(ZoneResolutionMode.class)
     void forgot_password_redirects_to_email_sent_within_zone(ZoneResolutionMode mode) throws Exception {

@@ -128,7 +128,7 @@ ratelimit:
         - "equals:/info"
         - "pathPattern:/z/{subdomain}/info"
     - name: SCIM
-      withCallerCredentialsID: 500r/s
+      withCallerCredentialsID: 5000r/s
       pathSelectors:
         - "startsWith:/Users"
         - "startsWith:/Groups"

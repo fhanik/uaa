@@ -75,10 +75,15 @@ public class ResetPasswordController {
     public String forgotPasswordPage(Model model,
             @RequestParam(required = false, value = "client_id") String clientId,
             @RequestParam(required = false, value = "redirect_uri") String redirectUri,
+            HttpServletRequest request,
             HttpServletResponse response) {
         if (!identityZoneManager.getCurrentIdentityZone().getConfig().getLinks().getSelfService().isSelfServiceLinksEnabled()) {
             return handleSelfServiceDisabled(model, response, "error_message_code", "self_service_disabled");
         }
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+        model.addAttribute("formAction", pathPrefix + "/forgot_password.do");
+        model.addAttribute("loginUrl", pathPrefix + "/login");
         model.addAttribute("client_id", clientId);
         model.addAttribute("redirect_uri", redirectUri);
         return "forgot_password";
@@ -189,8 +194,9 @@ public class ResetPasswordController {
             model.addAttribute("code", newCode);
             model.addAttribute("email", uaaUser.getEmail());
             model.addAttribute("username", uaaUser.getUsername());
-            String pathPrefix = UaaUrlUtils.getZonePathPrefix(request);
-            model.addAttribute("formAction", StringUtils.hasText(pathPrefix) ? pathPrefix + "/reset_password.do" : "/reset_password.do");
+            String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+            String pathPrefix = contextPath + UaaUrlUtils.getZonePathPrefix(request);
+            model.addAttribute("formAction", pathPrefix + "/reset_password.do");
             return "reset_password";
         }
     }

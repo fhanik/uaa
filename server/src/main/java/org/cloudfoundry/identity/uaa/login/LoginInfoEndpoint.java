@@ -405,9 +405,10 @@ public class LoginInfoEndpoint {
         String zonifiedEntityID = getZonifiedEntityId();
         Map<String, ?> links = getLinksInfo();
         if (!jsonResponse && request != null) {
-            String pathPrefix = getZonePathPrefix(request);
+            String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+            String pathPrefix = contextPath + getZonePathPrefix(request);
             model.addAttribute("pathPrefix", pathPrefix);
-            model.addAttribute("formAction", pathPrefix.isEmpty() ? "/login.do" : pathPrefix + "/login.do");
+            model.addAttribute("formAction", pathPrefix + "/login.do");
             if (!pathPrefix.isEmpty()) {
                 Map<String, Object> mutableLinks = new HashMap<>(links);
                 if (mutableLinks.containsKey(CREATE_ACCOUNT_LINK)) {

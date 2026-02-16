@@ -408,6 +408,22 @@ public class LoginMockMvcTests {
                 .andExpect(content().string(containsString(expectedForgotPasswordPath)));
     }
 
+    /**
+     * Backwards compatibility: when UAA is deployed with context path /uaa (e.g. integration tests),
+     * login page must render form action and links with /uaa prefix so forms and links work.
+     */
+    @Test
+    void loginPageWithContextPath_returnsFormActionAndLinksWithContextPath() throws Exception {
+        // Use default UAA links (create_account, forgot_password) regardless of globalLinks set by other tests
+        ReflectionTestUtils.setField(loginInfoEndpoint, "globalLinks", new Links().setSelfService(new Links.SelfService()));
+        mockMvc.perform(get("/uaa/login").contextPath("/uaa").accept(TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(view().name("login"))
+                .andExpect(content().string(containsString("action=\"/uaa/login.do\"")))
+                .andExpect(content().string(containsString("/uaa/create_account")))
+                .andExpect(content().string(containsString("/uaa/forgot_password")));
+    }
+
     IdentityZone createZoneLinksZone() throws Exception {
         String subdomain = new RandomValueStringGenerator(24).generate().toLowerCase();
         IdentityZone zone = MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());

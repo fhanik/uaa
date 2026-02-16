@@ -365,10 +365,10 @@ public class UaaAuthorizationEndpoint extends AbstractEndpoint implements Authen
         String redirectUri = request.getRequestURL() + "?" + queryString;
         model.put("redirect", redirectUri);
 
-        String pathPrefix = getZonePathPrefix(request);
+        String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
+        String pathPrefix = contextPath + getZonePathPrefix(request);
         model.put("pathPrefix", pathPrefix);
-        String logoutPath = StringUtils.hasText(pathPrefix) ? pathPrefix + "/logout.do" : "/logout.do";
-        model.put("logoutUrl", logoutPath + "?redirect=" + UriUtils.encode(redirectUri, StandardCharsets.UTF_8));
+        model.put("logoutUrl", pathPrefix + "/logout.do?redirect=" + UriUtils.encode(redirectUri, StandardCharsets.UTF_8));
 
         model.put("error", "The application is not authorized for your account.");
         model.put("error_message_code", "login.invalid_idp");

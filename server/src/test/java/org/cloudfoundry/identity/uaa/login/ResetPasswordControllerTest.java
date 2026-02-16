@@ -348,6 +348,21 @@ class ResetPasswordControllerTest extends TestClassNullifier {
                 .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")));
     }
 
+    /**
+     * Backwards compatibility: when UAA is deployed with context path /uaa (e.g. integration tests),
+     * reset_password page must render form action as /uaa/reset_password.do so the form posts to the right place.
+     */
+    @Test
+    void resetPasswordPageWithContextPath_returnsFormActionWithContextPath() throws Exception {
+        IdentityZone zone = IdentityZoneHolder.get();
+        ExpiringCode code = codeStore.generateCode("{\"user_id\" : \"some-user-id\"}", new Timestamp(System.currentTimeMillis() + 1000000), null, zone.getId());
+        mockMvc.perform(get("/uaa/reset_password").contextPath("/uaa").param("email", "user@example.com").param("code", code.getCode()))
+                .andExpect(status().isOk())
+                .andExpect(view().name("reset_password"))
+                .andExpect(model().attribute("formAction", "/uaa/reset_password.do"))
+                .andExpect(content().string(containsString("action=\"/uaa/reset_password.do\"")));
+    }
+
     private String pathPrefixFor(RequestPathMode mode) {
         if (mode == RequestPathMode.ZONE_PATH) {
             IdentityZone zone = MultitenancyFixture.identityZone("test-zone-id", ZONE_PATH_SUBDOMAIN);

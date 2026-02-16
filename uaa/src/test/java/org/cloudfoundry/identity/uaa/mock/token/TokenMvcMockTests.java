@@ -1167,6 +1167,35 @@ public class TokenMvcMockTests extends AbstractTokenMockMvcTests {
         assertThat(code).isNotNull();
     }
 
+    /**
+     * Backwards compatibility: when UAA is deployed with context path /uaa (e.g. integration tests),
+     * switch_idp page must render logout link with /uaa prefix.
+     */
+    @Test
+    void switchIdpPageWithContextPath_containsLogoutLinkWithContextPath() throws Exception {
+        IdentityZoneHolder.set(IdentityZone.getUaa());
+        String scopes = "space.*.developer,org.*.reader,*.*,openid";
+        String clientId3 = "testclient" + generator.generate();
+        String client3DisplayName = "Switch IDP Context Path Test";
+        setUpClients(clientId3, scopes, scopes, "authorization_code,password", true, TEST_REDIRECT_URI,
+                Collections.singletonList(OriginKeys.LOGIN_SERVER), -1, null,
+                Collections.singletonMap(ClientConstants.CLIENT_NAME, client3DisplayName));
+        String username = "testuser" + generator.generate();
+        ScimUser developer = setUpUser(jdbcScimUserProvisioning, jdbcScimGroupMembershipManager, jdbcScimGroupProvisioning, username, "openid", OriginKeys.UAA, IdentityZone.getUaaZoneId());
+        MockHttpSession session = getAuthenticatedSession(developer);
+        mockMvc.perform(get("/uaa/oauth/authorize")
+                        .session(session)
+                        .param(OAuth2Utils.RESPONSE_TYPE, "code")
+                        .param(OAuth2Utils.STATE, generator.generate())
+                        .param(OAuth2Utils.CLIENT_ID, clientId3)
+                        .param(OAuth2Utils.REDIRECT_URI, TEST_REDIRECT_URI)
+                        .contextPath("/uaa")
+                        .accept(MediaType.TEXT_HTML))
+                .andExpect(status().isUnauthorized())
+                .andExpect(view().name("switch_idp"))
+                .andExpect(content().string(containsString("/uaa/logout.do")));
+    }
+
     @Test
     void clientIdentityProviderRestrictionForPasswordGrant() throws Exception {
         //a client with allowed providers in the default zone should be rejected if the client is not allowed
