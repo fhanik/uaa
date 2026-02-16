@@ -16,6 +16,7 @@ package org.cloudfoundry.identity.uaa.security;
 
 import lombok.extern.slf4j.Slf4j;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
+import org.cloudfoundry.identity.uaa.util.UaaUrlUtils;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.InternalAuthenticationServiceException;
@@ -91,17 +92,32 @@ public class CsrfAwareEntryPointAndDeniedHandler implements AccessDeniedHandler,
                                   HttpServletResponse response,
                                   Exception exception) throws IOException, ServletException {
 
-        AuthenticationException authEx = exception instanceof AuthenticationException ae ?
-                ae : new InternalAuthenticationServiceException("Access denied.", exception);
-
         if (wantJson(request)) {
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
             response.getWriter().append("{\"error\":\"%s\"}".formatted(exception.getMessage()));
         } else {
             LoginUrlAuthenticationEntryPoint entryPoint = getLoginUrlAuthenticationEntryPoint(exception);
-            entryPoint.commence(request, response, authEx);
+            String zonePathPrefix = UaaUrlUtils.getZonePathPrefix(request);
+            if (zonePathPrefix.isEmpty()) {
+                AuthenticationException authEx = exception instanceof AuthenticationException ae ?
+                        ae : new InternalAuthenticationServiceException("Access denied.", exception);
+                entryPoint.commence(request, response, authEx);
+            } else {
+                String path = entryPoint.getLoginFormUrl();
+                String redirectPath = request.getContextPath() + zonePathPrefix + path;
+                String redirectUrl = buildAbsoluteRedirectUrl(request, redirectPath);
+                response.sendRedirect(response.encodeRedirectURL(redirectUrl));
+            }
         }
+    }
+
+    private static String buildAbsoluteRedirectUrl(HttpServletRequest request, String redirectPath) {
+        String scheme = request.getScheme();
+        String host = request.getServerName();
+        int port = request.getServerPort();
+        String portSuffix = (port == 80 && "http".equals(scheme)) || (port == 443 && "https".equals(scheme)) ? "" : ":" + port;
+        return scheme + "://" + host + portSuffix + redirectPath;
     }
 
     protected LoginUrlAuthenticationEntryPoint getLoginUrlAuthenticationEntryPoint(Exception exception) {

@@ -124,6 +124,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
@@ -213,6 +214,9 @@ public final class MockMvcUtils {
         }
         if (method == HttpMethod.PUT) {
             return put(path, pathVars);
+        }
+        if (method == HttpMethod.PATCH) {
+            return patch(path, pathVars);
         }
         if (method == HttpMethod.DELETE) {
             return delete(path, pathVars);

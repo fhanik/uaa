@@ -2,8 +2,11 @@ package org.cloudfoundry.identity.uaa.login;
 
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.account.UserAccountStatus;
+import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.IdentityZoneCreationResult;
+import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.provider.IdentityProvider;
 import org.cloudfoundry.identity.uaa.provider.IdentityProviderProvisioning;
 import org.cloudfoundry.identity.uaa.provider.JdbcIdentityProviderProvisioning;
@@ -16,12 +19,16 @@ import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.util.SessionUtils;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneConfiguration;
+import org.cloudfoundry.identity.uaa.zone.IdentityZoneHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.context.SecurityContext;
@@ -46,136 +53,147 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
+/**
+ * Same scenarios as {@link ForcePasswordChangeControllerMockMvcTest} but run with
+ * {@link ZoneResolutionMode#SUBDOMAIN} and {@link ZoneResolutionMode#ZONE_PATH} so that
+ * force password change is covered for subdomain-based and path-based identity zones.
+ */
 @DefaultTestContext
-class ForcePasswordChangeControllerMockMvcTest {
+class ForcePasswordChangeControllerZoneResolutionMockMvcTest {
+
     private ScimUser user;
     private String token;
     private IdentityProviderProvisioning identityProviderProvisioning;
     private IdentityZoneConfiguration uaaZoneConfig;
+    private IdentityZoneCreationResult zoneResult;
+    private String subdomain;
 
     @Autowired
     private WebApplicationContext webApplicationContext;
     @Autowired
     private MockMvc mockMvc;
 
+    /** Creates a zone (with admin client) and a user in that zone; sets {@link #subdomain}, {@link #zoneResult}, {@link #user}, {@link #token}. */
+    void setupZoneAndUser(ZoneResolutionMode mode) throws Exception {
+        subdomain = new AlphanumericRandomValueStringGenerator().generate().toLowerCase();
+        UaaClientDetails adminClient = new UaaClientDetails("admin", null, null, "client_credentials",
+                "clients.admin,scim.read,scim.write,idps.write,uaa.admin", "http://redirect.url");
+        adminClient.setClientSecret("admin-secret");
+        zoneResult = MockMvcUtils.createOtherIdentityZoneAndReturnResult(subdomain, mockMvc, webApplicationContext, adminClient, IdentityZoneHolder.getCurrentZoneId());
+        token = MockMvcUtils.getClientCredentialsOAuthAccessToken(mode, mockMvc, "admin", "admin-secret", null, subdomain, false);
+        String username = new AlphanumericRandomValueStringGenerator().generate() + "@test.org";
+        ScimUser newUser = new ScimUser(null, username, "givenname", "familyname");
+        newUser.setPrimaryEmail(username);
+        newUser.setPassword("secret");
+        user = MockMvcUtils.createUserInZone(mode, mockMvc, token, newUser, zoneResult.getIdentityZone().getSubdomain(), null);
+    }
+
     @BeforeEach
     void setup() throws Exception {
-        String username = new AlphanumericRandomValueStringGenerator().generate() + "@test.org";
-        user = new ScimUser(null, username, "givenname", "familyname");
-        user.setPrimaryEmail(username);
-        user.setPassword("secret");
         identityProviderProvisioning = webApplicationContext.getBean(JdbcIdentityProviderProvisioning.class);
-        token = MockMvcUtils.getClientCredentialsOAuthAccessToken(mockMvc, "admin", "adminsecret", null, null);
-        user = MockMvcUtils.createUser(mockMvc, token, user);
         uaaZoneConfig = MockMvcUtils.getZoneConfiguration(webApplicationContext, "uaa");
     }
 
     @AfterEach
     void cleanup() {
         MockMvcUtils.setZoneConfiguration(webApplicationContext, "uaa", uaaZoneConfig);
+        IdentityZoneHolder.set(IdentityZone.getUaa());
+    }
+
+    private static String expectedRedirectBase(ZoneResolutionMode mode, String subdomain) {
+        return mode == ZoneResolutionMode.ZONE_PATH
+                ? "http://localhost/z/" + subdomain
+                : "http://" + subdomain + ".localhost";
     }
 
     @Nested
     @DefaultTestContext
     class HappyPath {
-        @BeforeEach
-        void setup() throws Exception {
+
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void requires_user_to_change_password(ZoneResolutionMode mode) throws Exception {
+            setupZoneAndUser(mode);
             UserAccountStatus userAccountStatus = new UserAccountStatus();
             userAccountStatus.setPasswordChangeRequired(true);
             String jsonStatus = JsonUtils.writeValueAsString(userAccountStatus);
             mockMvc.perform(
-                            patch("/Users/" + user.getId() + "/status")
+                            mode.createRequestBuilder(subdomain, HttpMethod.PATCH, "/Users/" + user.getId() + "/status")
                                     .header("Authorization", "Bearer " + token)
                                     .accept(APPLICATION_JSON)
                                     .contentType(APPLICATION_JSON)
                                     .content(jsonStatus))
                     .andExpect(status().isOk());
-        }
 
-        @Test
-        void requires_user_to_change_password() throws Exception {
             MockHttpSession session = new MockHttpSession();
-
-            MockHttpServletRequestBuilder userForcePasswordChangePostLogin = post("/login.do")
+            MockHttpServletRequestBuilder loginPost = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/login.do")
                     .param("username", user.getUserName())
                     .param("password", "secret")
                     .session(session)
                     .with(cookieCsrf())
                     .param(CookieBasedCsrfTokenRepository.DEFAULT_CSRF_COOKIE_NAME, "csrf1");
-            mockMvc.perform(userForcePasswordChangePostLogin)
+            mockMvc.perform(loginPost)
                     .andExpect(status().isFound())
+                    // Login success redirect is / for both modes (ZONE_PATH success URL not yet zone-path aware)
                     .andExpect(redirectedUrl("/"));
 
             assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
             assertThat(SessionUtils.isPasswordChangeRequired(session)).isTrue();
 
-            mockMvc.perform(get("/")
-                            .session(session))
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/").session(session))
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("/force_password_change"));
+                    .andExpect(redirectedUrl(mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/force_password_change" : "/force_password_change"));
 
-            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
             assertThat(SessionUtils.isPasswordChangeRequired(session)).isTrue();
 
-            MockHttpServletRequestBuilder validPost = post("/force_password_change")
+            MockHttpServletRequestBuilder validPost = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/force_password_change")
                     .param("password", "test")
                     .param("password_confirmation", "test")
                     .session(session)
                     .with(cookieCsrf());
             mockMvc.perform(validPost)
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("/force_password_change_completed"));
-            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+                    .andExpect(redirectedUrl(mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/force_password_change_completed" : "/force_password_change_completed"));
             assertThat(SessionUtils.isPasswordChangeRequired(session)).isFalse();
 
-            mockMvc.perform(get("/force_password_change_completed")
-                            .session(session))
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/force_password_change_completed").session(session))
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("http://localhost/"));
-            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+                    .andExpect(redirectedUrl(expectedRedirectBase(mode, subdomain) + "/"));
             assertThat(SessionUtils.isPasswordChangeRequired(session)).isFalse();
         }
-
     }
 
     @Nested
     @DefaultTestContext
     class WithPasswordPolicy {
-        IdentityProvider identityProvider;
-        UaaIdentityProviderDefinition cleanIdpDefinition;
-
-        @BeforeEach
-        void setup() {
-            identityProvider = identityProviderProvisioning.retrieveByOrigin(OriginKeys.UAA, IdentityZone.getUaaZoneId());
-            cleanIdpDefinition = (UaaIdentityProviderDefinition) identityProvider.getConfig();
-        }
-
-        @AfterEach
-        void cleanup() {
-            identityProvider.setConfig(cleanIdpDefinition);
-            identityProviderProvisioning.update(identityProvider, identityProvider.getIdentityZoneId());
-        }
 
         @ParameterizedTest
-        @MethodSource("org.cloudfoundry.identity.uaa.login.ForcePasswordChangeControllerMockMvcTest#authenticationTestParams")
-        void force_password_change_with_invalid_password(PasswordPolicyWithInvalidPassword passwordPolicyWithInvalidPassword) throws Exception {
+        @MethodSource("org.cloudfoundry.identity.uaa.login.ForcePasswordChangeControllerZoneResolutionMockMvcTest#authenticationTestParamsWithZoneModes")
+        void force_password_change_with_invalid_password(
+                ForcePasswordChangeControllerMockMvcTest.PasswordPolicyWithInvalidPassword passwordPolicyWithInvalidPassword,
+                ZoneResolutionMode mode) throws Exception {
+            setupZoneAndUser(mode);
+            IdentityProvider identityProvider = identityProviderProvisioning.retrieveByOrigin(OriginKeys.UAA, zoneResult.getIdentityZone().getId());
+            UaaIdentityProviderDefinition cleanIdpDefinition = (UaaIdentityProviderDefinition) identityProvider.getConfig();
+            try {
+                identityProvider.setConfig(new UaaIdentityProviderDefinition(passwordPolicyWithInvalidPassword.passwordPolicy, null));
+                identityProviderProvisioning.update(identityProvider, identityProvider.getIdentityZoneId());
+
             UserAccountStatus userAccountStatus = new UserAccountStatus();
             userAccountStatus.setPasswordChangeRequired(true);
             String jsonStatus = JsonUtils.writeValueAsString(userAccountStatus);
             mockMvc.perform(
-                            patch("/Users/" + user.getId() + "/status")
+                            mode.createRequestBuilder(subdomain, HttpMethod.PATCH, "/Users/" + user.getId() + "/status")
                                     .header("Authorization", "Bearer " + token)
                                     .accept(APPLICATION_JSON)
                                     .contentType(APPLICATION_JSON)
                                     .content(jsonStatus))
                     .andExpect(status().isOk());
+
             MockHttpSession session = new MockHttpSession();
             Cookie cookie = new Cookie(CookieBasedCsrfTokenRepository.DEFAULT_CSRF_COOKIE_NAME, "csrf1");
 
-            identityProvider.setConfig(new UaaIdentityProviderDefinition(passwordPolicyWithInvalidPassword.passwordPolicy, null));
-            identityProviderProvisioning.update(identityProvider, identityProvider.getIdentityZoneId());
-
-            MockHttpServletRequestBuilder invalidPost = post("/login.do")
+            MockHttpServletRequestBuilder invalidPost = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/login.do")
                     .param("username", user.getUserName())
                     .param("password", "secret")
                     .session(session)
@@ -184,7 +202,7 @@ class ForcePasswordChangeControllerMockMvcTest {
             mockMvc.perform(invalidPost)
                     .andExpect(status().isFound());
 
-            MockHttpServletRequestBuilder validPost = post("/force_password_change")
+            MockHttpServletRequestBuilder validPost = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/force_password_change")
                     .param("password", passwordPolicyWithInvalidPassword.password)
                     .param("password_confirmation", passwordPolicyWithInvalidPassword.password)
                     .session(session)
@@ -194,98 +212,88 @@ class ForcePasswordChangeControllerMockMvcTest {
                     .andExpect(view().name("force_password_change"))
                     .andExpect(model().attribute("message", passwordPolicyWithInvalidPassword.errorMessage))
                     .andExpect(model().attribute("email", user.getPrimaryEmail()));
+            } finally {
+                identityProvider.setConfig(cleanIdpDefinition);
+                identityProviderProvisioning.update(identityProvider, identityProvider.getIdentityZoneId());
+            }
         }
 
-        @Test
-        void force_password_when_system_was_configured() throws Exception {
+        @ParameterizedTest
+        @EnumSource(ZoneResolutionMode.class)
+        void force_password_when_system_was_configured(ZoneResolutionMode mode) throws Exception {
+            setupZoneAndUser(mode);
+            IdentityProvider identityProvider = identityProviderProvisioning.retrieveByOrigin(OriginKeys.UAA, zoneResult.getIdentityZone().getId());
+            UaaIdentityProviderDefinition cleanIdpDefinition = (UaaIdentityProviderDefinition) identityProvider.getConfig();
+            try {
             PasswordPolicy passwordPolicy = new PasswordPolicy(4, 20, 0, 0, 0, 0, 0);
             passwordPolicy.setPasswordNewerThan(new Date(System.currentTimeMillis()));
             identityProvider.setConfig(new UaaIdentityProviderDefinition(passwordPolicy, null));
-
             identityProviderProvisioning.update(identityProvider, identityProvider.getIdentityZoneId());
-            MockHttpSession session = new MockHttpSession();
 
-            MockHttpServletRequestBuilder invalidPost = post("/login.do")
+            MockHttpSession session = new MockHttpSession();
+            MockHttpServletRequestBuilder loginPost = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/login.do")
                     .param("username", user.getUserName())
                     .param("password", "secret")
                     .session(session)
                     .with(cookieCsrf())
                     .param(CookieBasedCsrfTokenRepository.DEFAULT_CSRF_COOKIE_NAME, "csrf1");
-
-            mockMvc.perform(invalidPost)
+            mockMvc.perform(loginPost)
                     .andExpect(status().isFound())
                     .andExpect(redirectedUrl("/"));
 
-            mockMvc.perform(
-                            get("/")
-                                    .session(session)
-                    )
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/").session(session))
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("/force_password_change"));
+                    .andExpect(redirectedUrl(mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/force_password_change" : "/force_password_change"));
 
-            MockHttpServletRequestBuilder validPost = post("/force_password_change")
+            MockHttpServletRequestBuilder validPost = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/force_password_change")
                     .param("password", "test")
                     .param("password_confirmation", "test")
                     .session(session)
                     .with(cookieCsrf());
-
             mockMvc.perform(validPost)
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("/force_password_change_completed"));
+                    .andExpect(redirectedUrl(mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/force_password_change_completed" : "/force_password_change_completed"));
 
-            mockMvc.perform(get("/force_password_change_completed")
-                            .session(session))
+            mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/force_password_change_completed").session(session))
                     .andExpect(status().isFound())
-                    .andExpect(redirectedUrl("http://localhost/"));
-            assertThat(((SecurityContext) ((HttpSession) session).getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)).getAuthentication().isAuthenticated()).isTrue();
+                    .andExpect(redirectedUrl(expectedRedirectBase(mode, subdomain) + "/"));
             assertThat(SessionUtils.isPasswordChangeRequired(session)).isFalse();
+            } finally {
+                identityProvider.setConfig(cleanIdpDefinition);
+                identityProviderProvisioning.update(identityProvider, identityProvider.getIdentityZoneId());
+            }
         }
     }
 
-    @Test
-    void submit_password_change_when_not_authenticated() throws Exception {
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void submit_password_change_when_not_authenticated(ZoneResolutionMode mode) throws Exception {
+        setupZoneAndUser(mode);
         UserAccountStatus userAccountStatus = new UserAccountStatus();
         userAccountStatus.setPasswordChangeRequired(true);
         String jsonStatus = JsonUtils.writeValueAsString(userAccountStatus);
         mockMvc.perform(
-                        patch("/Users/" + user.getId() + "/status")
+                        mode.createRequestBuilder(subdomain, HttpMethod.PATCH, "/Users/" + user.getId() + "/status")
                                 .header("Authorization", "Bearer " + token)
                                 .accept(APPLICATION_JSON)
                                 .contentType(APPLICATION_JSON)
                                 .content(jsonStatus))
                 .andExpect(status().isOk());
 
-        MockHttpServletRequestBuilder validPost = post("/force_password_change")
+        MockHttpServletRequestBuilder validPost = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/force_password_change")
                 .param("password", "test")
                 .param("password_confirmation", "test");
         validPost.with(cookieCsrf());
+        String expectedRedirect = mode == ZoneResolutionMode.ZONE_PATH
+                ? "http://localhost/z/" + subdomain + "/login"
+                : "http://" + subdomain + ".localhost/login";
         mockMvc.perform(validPost)
                 .andExpect(status().isFound())
-                .andExpect(redirectedUrl("http://localhost/login"));
+                .andExpect(redirectedUrl(expectedRedirect));
     }
 
-    static class PasswordPolicyWithInvalidPassword {
-        PasswordPolicy passwordPolicy;
-        String password;
-        String errorMessage;
-
-        public PasswordPolicyWithInvalidPassword(PasswordPolicy passwordPolicy, String password, String errorMessage) {
-            this.passwordPolicy = passwordPolicy;
-            this.password = password;
-            this.errorMessage = errorMessage;
-        }
+    static Stream<Arguments> authenticationTestParamsWithZoneModes() {
+        return ForcePasswordChangeControllerMockMvcTest.authenticationTestParams()
+                .flatMap(pp -> Stream.of(ZoneResolutionMode.values()).map(mode -> Arguments.of(pp, mode)));
     }
-
-    static Stream<PasswordPolicyWithInvalidPassword> authenticationTestParams() {
-        return Stream.of(
-                new PasswordPolicyWithInvalidPassword(new PasswordPolicy(2, 0, 0, 0, 0, 0, 0), "1", "Password must be at least 2 characters in length."),
-                new PasswordPolicyWithInvalidPassword(new PasswordPolicy(0, 1, 0, 0, 0, 0, 0), "12", "Password must be no more than 1 characters in length."),
-                new PasswordPolicyWithInvalidPassword(new PasswordPolicy(0, 1, 1, 0, 0, 0, 0), "1", "Password must contain at least 1 uppercase characters."),
-                new PasswordPolicyWithInvalidPassword(new PasswordPolicy(0, 1, 0, 1, 0, 0, 0), "1", "Password must contain at least 1 lowercase characters."),
-                new PasswordPolicyWithInvalidPassword(new PasswordPolicy(0, 1, 0, 0, 1, 0, 0), "a", "Password must contain at least 1 digit characters."),
-                new PasswordPolicyWithInvalidPassword(new PasswordPolicy(0, 1, 0, 0, 0, 1, 0), "a", "Password must contain at least 1 special characters.")
-        );
-
-    }
-
 }
