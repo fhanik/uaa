@@ -380,6 +380,34 @@ public class LoginMockMvcTests {
                 .andExpect(content().string(containsString("/create_account")));
     }
 
+    /**
+     * Login page must be zone-path aware: form action and self-service links
+     * (create account, forgot password) must use the zone path prefix when present.
+     * Passes for SUBDOMAIN (no /z/ path); will pass for ZONE_PATH once login.html is made zone-aware.
+     */
+    @ParameterizedTest
+    @EnumSource(ZoneResolutionMode.class)
+    void login_page_has_zone_aware_form_action_and_links(ZoneResolutionMode mode) throws Exception {
+        String subdomain = mode == ZoneResolutionMode.ZONE_PATH
+                ? new AlphanumericRandomValueStringGenerator(24).generate().toLowerCase()
+                : "";
+        if (mode == ZoneResolutionMode.ZONE_PATH) {
+            MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());
+        }
+
+        String expectedFormAction = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/login.do" : "/login.do";
+        String expectedCreateAccountPath = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/create_account" : "/create_account";
+        String expectedForgotPasswordPath = mode == ZoneResolutionMode.ZONE_PATH ? "/z/" + subdomain + "/forgot_password" : "/forgot_password";
+
+        mockMvc.perform(mode.createRequestBuilder(subdomain, HttpMethod.GET, "/login")
+                        .accept(TEXT_HTML))
+                .andExpect(status().isOk())
+                .andExpect(view().name("login"))
+                .andExpect(content().string(containsString("action=\"" + expectedFormAction + "\"")))
+                .andExpect(content().string(containsString(expectedCreateAccountPath)))
+                .andExpect(content().string(containsString(expectedForgotPasswordPath)));
+    }
+
     IdentityZone createZoneLinksZone() throws Exception {
         String subdomain = new RandomValueStringGenerator(24).generate().toLowerCase();
         IdentityZone zone = MockMvcUtils.createOtherIdentityZone(subdomain, mockMvc, webApplicationContext, false, IdentityZoneHolder.getCurrentZoneId());

@@ -96,6 +96,7 @@ import static org.cloudfoundry.identity.uaa.constants.OriginKeys.OAUTH20;
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.OIDC10;
 import static org.cloudfoundry.identity.uaa.constants.OriginKeys.UAA;
 import static org.cloudfoundry.identity.uaa.util.UaaUrlUtils.addSubdomainToUrl;
+import static org.cloudfoundry.identity.uaa.util.UaaUrlUtils.getZonePathPrefix;
 import static org.springframework.util.StringUtils.hasText;
 
 /**
@@ -403,6 +404,21 @@ public class LoginInfoEndpoint {
 
         String zonifiedEntityID = getZonifiedEntityId();
         Map<String, ?> links = getLinksInfo();
+        if (!jsonResponse && request != null) {
+            String pathPrefix = getZonePathPrefix(request);
+            model.addAttribute("pathPrefix", pathPrefix);
+            model.addAttribute("formAction", pathPrefix.isEmpty() ? "/login.do" : pathPrefix + "/login.do");
+            if (!pathPrefix.isEmpty()) {
+                Map<String, Object> mutableLinks = new HashMap<>(links);
+                if (mutableLinks.containsKey(CREATE_ACCOUNT_LINK)) {
+                    mutableLinks.put(CREATE_ACCOUNT_LINK, pathPrefix + mutableLinks.get(CREATE_ACCOUNT_LINK));
+                }
+                if (mutableLinks.containsKey(FORGOT_PASSWORD_LINK)) {
+                    mutableLinks.put(FORGOT_PASSWORD_LINK, pathPrefix + mutableLinks.get(FORGOT_PASSWORD_LINK));
+                }
+                links = mutableLinks;
+            }
+        }
         if (jsonResponse) {
             setJsonInfo(model, samlIdentityProviders, links);
         } else {
