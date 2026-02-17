@@ -6,7 +6,7 @@ import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.oauth.common.util.RandomValueStringGenerator;
 import org.cloudfoundry.identity.uaa.provider.LdapIdentityProviderDefinition;
 import org.cloudfoundry.identity.uaa.test.InMemoryLdapServer;
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.mock.util.ZoneResolutionMode;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.http.HttpMethod;

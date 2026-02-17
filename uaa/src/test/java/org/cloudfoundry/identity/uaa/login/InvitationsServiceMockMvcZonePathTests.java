@@ -24,7 +24,7 @@ import org.cloudfoundry.identity.uaa.invitations.InvitationsResponse;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtilsZonePath;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.IdentityZoneCreationResult;
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.mock.util.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils.ZoneScimInviteData;
 import org.cloudfoundry.identity.uaa.oauth.common.util.OAuth2Utils;
 import org.cloudfoundry.identity.uaa.provider.AbstractIdentityProviderDefinition;

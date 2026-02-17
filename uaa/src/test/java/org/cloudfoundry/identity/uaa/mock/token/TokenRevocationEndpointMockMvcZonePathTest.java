@@ -5,7 +5,7 @@ import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtilsZonePath;
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.mock.util.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.event.TokenRevocationEvent;
 import org.cloudfoundry.identity.uaa.oauth.jwt.Jwt;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtHelper;

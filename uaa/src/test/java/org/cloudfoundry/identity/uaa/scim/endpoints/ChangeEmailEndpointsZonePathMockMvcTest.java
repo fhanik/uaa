@@ -5,7 +5,7 @@ import org.cloudfoundry.identity.uaa.codestore.ExpiringCode;
 import org.cloudfoundry.identity.uaa.codestore.ExpiringCodeStore;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.util.ZoneControllerResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.provider.ClientDetails;
 import org.cloudfoundry.identity.uaa.resources.QueryableResourceManager;
 import org.cloudfoundry.identity.uaa.scim.ScimUser;
@@ -40,6 +40,7 @@ import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -78,15 +79,15 @@ class ChangeEmailEndpointsZonePathMockMvcTest {
         mockMvc = MockMvcBuilders.standaloneSetup(changeEmailEndpoints).build();
     }
 
-    private MockHttpServletRequestBuilder createPostBuilder(ZoneResolutionMode mode, String pathSuffix) {
+    private MockHttpServletRequestBuilder createPostBuilder(ZoneControllerResolutionMode mode, String pathSuffix) {
         return mode.createRequestBuilder(SUBDOMAIN, HttpMethod.POST, pathSuffix)
                 .contentType(APPLICATION_JSON)
                 .accept(APPLICATION_JSON);
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void generateEmailChangeCode(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void generateEmailChangeCode(ZoneControllerResolutionMode mode) throws Exception {
         String data = "{\"userId\":\"user-id-001\",\"email\":\"new@example.com\",\"client_id\":null}";
         when(mockExpiringCodeStore.generateCode(eq(data), any(Timestamp.class), eq(EMAIL.name()), eq(currentIdentityZoneId)))
                 .thenReturn(new ExpiringCode("secret_code", new Timestamp(System.currentTimeMillis() + 1000), data, EMAIL.name()));
@@ -102,8 +103,8 @@ class ChangeEmailEndpointsZonePathMockMvcTest {
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void generateEmailChangeCodeWithExistingUsernameChange(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void generateEmailChangeCodeWithExistingUsernameChange(ZoneControllerResolutionMode mode) throws Exception {
         String data = "{\"userId\":\"user-id-001\",\"email\":\"new@example.com\",\"client_id\":null}";
 
         ScimUser userChangingEmail = new ScimUser("id001", "user@example.com", null, null);
@@ -118,12 +119,13 @@ class ChangeEmailEndpointsZonePathMockMvcTest {
         ).thenReturn(Collections.singletonList(existingUser));
 
         mockMvc.perform(createPostBuilder(mode, "/email_verifications").content(data))
+                .andDo(print())
                 .andExpect(status().isConflict());
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void changeEmail(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void changeEmail(ZoneControllerResolutionMode mode) throws Exception {
         when(mockExpiringCodeStore.retrieveCode("the_secret_code", currentIdentityZoneId))
                 .thenReturn(new ExpiringCode("the_secret_code", new Timestamp(System.currentTimeMillis()), "{\"userId\":\"user-id-001\",\"email\":\"new@example.com\", \"client_id\":\"app\"}", EMAIL.name()));
 
@@ -165,8 +167,8 @@ class ChangeEmailEndpointsZonePathMockMvcTest {
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void changeEmailWhenUsernameNotTheSame(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void changeEmailWhenUsernameNotTheSame(ZoneControllerResolutionMode mode) throws Exception {
         when(mockExpiringCodeStore.retrieveCode("the_secret_code", currentIdentityZoneId))
                 .thenReturn(new ExpiringCode("the_secret_code", new Timestamp(System.currentTimeMillis()), "{\"userId\":\"user-id-001\",\"email\":\"new@example.com\",\"client_id\":null}", EMAIL.name()));
 
@@ -187,8 +189,8 @@ class ChangeEmailEndpointsZonePathMockMvcTest {
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void changeEmail_withIncorrectCode(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void changeEmail_withIncorrectCode(ZoneControllerResolutionMode mode) throws Exception {
         when(mockExpiringCodeStore.retrieveCode("the_secret_code", currentIdentityZoneId))
                 .thenReturn(new ExpiringCode("the_secret_code", new Timestamp(System.currentTimeMillis()), "{\"userId\":\"user-id-001\",\"email\":\"new@example.com\",\"client_id\":null}", "incorrect-code"));
 

@@ -3,7 +3,7 @@ package org.cloudfoundry.identity.uaa.scim.endpoints;
 import org.cloudfoundry.identity.uaa.DefaultTestContext;
 import org.cloudfoundry.identity.uaa.account.OpenIdConfiguration;
 import org.cloudfoundry.identity.uaa.util.JsonUtils;
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.mock.util.ZoneResolutionMode;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.http.HttpMethod;
@@ -51,13 +51,11 @@ class OpenIdConnectEndpointsMockMvcZonePathTests {
     void wellKnownEndpoint(ZoneResolutionMode mode) throws Exception {
         for (String url : Arrays.asList("/.well-known/openid-configuration", "/oauth/token/.well-known/openid-configuration")) {
             // For ZONE_PATH mode, use localhost (no subdomain); for SUBDOMAIN mode, use subdomain.localhost
-            String host = mode == ZoneResolutionMode.ZONE_PATH 
-                    ? "localhost" 
+            String host = mode == ZoneResolutionMode.ZONE_PATH
+                    ? "localhost"
                     : identityZone.getSubdomain() + ".localhost";
             MockHttpServletResponse response = mockMvc.perform(
                             mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, url)
-                                    .header("Host", host)
-                                    .servletPath(url)
                                     .accept(APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andReturn().getResponse();
@@ -95,13 +93,11 @@ class OpenIdConnectEndpointsMockMvcZonePathTests {
     @EnumSource(ZoneResolutionMode.class)
     void userInfoEndpointIsCorrect(ZoneResolutionMode mode) throws Exception {
         for (String url : Arrays.asList("/.well-known/openid-configuration", "/oauth/token/.well-known/openid-configuration")) {
-            String host = mode == ZoneResolutionMode.ZONE_PATH 
-                    ? "localhost" 
+            String host = mode == ZoneResolutionMode.ZONE_PATH
+                    ? "localhost"
                     : identityZone.getSubdomain() + ".localhost";
             MockHttpServletResponse response = mockMvc.perform(
                             mode.createRequestBuilder(identityZone.getSubdomain(), HttpMethod.GET, url)
-                                    .header("Host", host)
-                                    .servletPath(url)
                                     .accept(APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andReturn().getResponse();

@@ -36,8 +36,16 @@ public class OpenIdConnectEndpoints {
     }
 
     private String getServerContextPath(HttpServletRequest request) {
-        StringBuffer requestURL = request.getRequestURL();
-        return requestURL.substring(0, requestURL.length() - request.getServletPath().length());
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+        String contextPath = request.getContextPath();
+        StringBuilder base = new StringBuilder().append(scheme).append("://").append(serverName);
+        if (("http".equals(scheme) && serverPort != 80) || ("https".equals(scheme) && serverPort != 443)) {
+            base.append(':').append(serverPort);
+        }
+        base.append(contextPath);
+        return base.toString();
     }
 
     private String getTokenEndpoint() throws URISyntaxException {

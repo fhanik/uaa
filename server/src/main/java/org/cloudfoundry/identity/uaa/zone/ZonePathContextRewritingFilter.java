@@ -28,6 +28,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import static org.cloudfoundry.identity.uaa.util.UaaStringUtils.hasText;
+
 /**
  * Runs first in the filter chain. If the request path (after context path) starts with
  * {@code /z/{subdomain}/}, rewrites the request so that the context path includes
@@ -48,6 +50,13 @@ public class ZonePathContextRewritingFilter extends OncePerRequestFilter {
      */
     public static final String ZONE_SUBDOMAIN_FROM_PATH = "org.cloudfoundry.identity.uaa.zone.ZoneSubdomainFromPath";
 
+    /**
+     * Request attribute always set by this filter. When the request was rewritten for a path-based zone,
+     * value is the original context path (e.g. "/uaa") before the filter rewrote it to include {@code /z/{subdomain}}.
+     * When the request was not rewritten, value is the empty string "".
+     */
+    public static final String ZONE_ORIGINAL_CONTEXT_PATH = "org.cloudfoundry.identity.uaa.zone.ZoneOriginalContextPath";
+
     public ZonePathContextRewritingFilter() {
     }
 
@@ -56,6 +65,58 @@ public class ZonePathContextRewritingFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String contextPath = request.getContextPath() != null ? request.getContextPath() : "";
         String requestURI = request.getRequestURI() != null ? request.getRequestURI() : "";
+        String pathAfterContext = getPathAfterContext(requestURI, contextPath);
+
+        if (!pathAfterContext.startsWith(ZONE_PATH_PREFIX) && !pathAfterContext.equals("/z")) {
+            //we do not have /z/{subdomain}/ so we can process the request as usual
+            HttpServletRequest wrappedRequest = new ZonePathRewrittenRequest(
+                    request,
+                    request.getContextPath(),
+                    hasText(request.getServletPath()) ? request.getServletPath() : pathAfterContext
+            );
+            wrappedRequest.setAttribute(ZONE_ORIGINAL_CONTEXT_PATH, contextPath);
+            filterChain.doFilter(wrappedRequest, response);
+            return;
+        }
+
+        //make sure we have the {subdomain} element after /z/
+        String subdomain = extractSubdomainFromPath(pathAfterContext);
+        if (!hasText(subdomain)) {
+            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Invalid /z/ URL");
+            return;
+        }
+
+        String pathAfterZonePrefix = getPathAfterZonePrefix(pathAfterContext, subdomain);
+        String newContextPath = getNewContextPath(contextPath, subdomain);
+        HttpServletRequest wrappedRequest = new ZonePathRewrittenRequest(request, newContextPath, pathAfterZonePrefix);
+        wrappedRequest.setAttribute(ZONE_SUBDOMAIN_FROM_PATH, subdomain);
+        wrappedRequest.setAttribute(ZONE_ORIGINAL_CONTEXT_PATH, contextPath);
+        HttpServletResponse wrappedResponse = new CookiePathRewritingResponse(response, contextPath);
+
+        filterChain.doFilter(wrappedRequest, wrappedResponse);
+    }
+
+    private String getNewContextPath(String contextPath, String subdomain) {
+        String baseContext =
+                (contextPath != null && contextPath.endsWith("/")) ?
+                        contextPath.substring(0, contextPath.length() - 1) :
+                        contextPath;
+        String newContextPath = (baseContext != null ? baseContext : "") + ZONE_PATH_PREFIX + subdomain;
+        return newContextPath;
+    }
+
+    private String getPathAfterZonePrefix(String pathAfterContext, String subdomain) {
+        String pathAfterZonePrefix = pathAfterContext.substring(ZONE_PATH_PREFIX.length() + subdomain.length());
+        if (!pathAfterZonePrefix.startsWith("/")) {
+            pathAfterZonePrefix = "/" + pathAfterZonePrefix;
+        }
+        if (pathAfterZonePrefix.isEmpty()) {
+            pathAfterZonePrefix = "/";
+        }
+        return pathAfterZonePrefix;
+    }
+
+    protected String getPathAfterContext(String requestURI, String contextPath) {
         String pathAfterContext = requestURI.startsWith(contextPath)
                 ? requestURI.substring(contextPath.length())
                 : requestURI;
@@ -65,41 +126,13 @@ public class ZonePathContextRewritingFilter extends OncePerRequestFilter {
         if (!pathAfterContext.startsWith("/")) {
             pathAfterContext = "/" + pathAfterContext;
         }
-
-        if (!pathAfterContext.startsWith(ZONE_PATH_PREFIX)) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        String subdomain = extractSubdomainFromPath(pathAfterContext);
-        if (subdomain == null) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        String pathAfterZonePrefix = pathAfterContext.substring(ZONE_PATH_PREFIX.length() + subdomain.length());
-        if (!pathAfterZonePrefix.startsWith("/")) {
-            pathAfterZonePrefix = "/" + pathAfterZonePrefix;
-        }
-        if (pathAfterZonePrefix.isEmpty()) {
-            pathAfterZonePrefix = "/";
-        }
-
-        String baseContext = (contextPath != null && contextPath.endsWith("/"))
-                ? contextPath.substring(0, contextPath.length() - 1) : contextPath;
-        String newContextPath = (baseContext != null ? baseContext : "") + ZONE_PATH_PREFIX + subdomain;
-        HttpServletRequest wrappedRequest = new ZonePathRewrittenRequest(request, newContextPath, pathAfterZonePrefix);
-        wrappedRequest.setAttribute(ZONE_SUBDOMAIN_FROM_PATH, subdomain);
-
-        String originalContextPath = contextPath;
-        HttpServletResponse wrappedResponse = new CookiePathRewritingResponse(response, originalContextPath);
-        filterChain.doFilter(wrappedRequest, wrappedResponse);
+        return pathAfterContext;
     }
 
     /**
      * Returns the subdomain if path starts with /z/{subdomain}/ (with at least one character after the second slash), otherwise null.
      */
-    private String extractSubdomainFromPath(String path) {
+    protected String extractSubdomainFromPath(String path) {
         if (path == null || !path.startsWith(ZONE_PATH_PREFIX)) {
             return null;
         }

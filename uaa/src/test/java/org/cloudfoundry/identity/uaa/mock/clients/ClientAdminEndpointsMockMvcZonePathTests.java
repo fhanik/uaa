@@ -24,7 +24,7 @@ import org.cloudfoundry.identity.uaa.client.event.SecretChangeEvent;
 import org.cloudfoundry.identity.uaa.client.event.SecretFailureEvent;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtils;
 import org.cloudfoundry.identity.uaa.mock.util.MockMvcUtilsZonePath;
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.mock.util.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientDetailsCreation;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientDetailsModification;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientJwtChangeRequest;

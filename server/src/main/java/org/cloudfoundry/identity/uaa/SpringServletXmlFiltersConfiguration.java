@@ -169,11 +169,16 @@ public class SpringServletXmlFiltersConfiguration {
         return bean;
     }
 
+    /**
+     * Zone path rewriting runs as a servlet filter (enabled) so it executes before Spring Security
+     * selects a filter chain. That way the request path is rewritten to context path + servlet path
+     * (e.g. /z/myzone + /Codes) before security matchers run, so patterns like /Codes/** match correctly.
+     */
     @Bean
     FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathContextRewritingFilter() {
         ZonePathContextRewritingFilter filter = new ZonePathContextRewritingFilter();
         FilterRegistrationBean<ZonePathContextRewritingFilter> bean = new FilterRegistrationBean<>(filter);
-        bean.setEnabled(false);
+        bean.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE + 50); // before Spring Security (default -100)
         return bean;
     }
 

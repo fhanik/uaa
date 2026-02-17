@@ -5,7 +5,7 @@
  */
 package org.cloudfoundry.identity.uaa.mock.util;
 
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.mock.util.ZoneResolutionMode;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
 import org.springframework.http.HttpMethod;
 import org.springframework.test.web.servlet.MockMvc;

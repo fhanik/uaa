@@ -20,7 +20,6 @@ import org.cloudfoundry.identity.uaa.web.LimitedModeUaaFilter;
 import org.cloudfoundry.identity.uaa.web.UaaFilterChain;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneResolvingFilter;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
-import org.cloudfoundry.identity.uaa.zone.ZonePathContextRewritingFilter;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -139,7 +138,6 @@ public class SpringServletXmlSecurityConfiguration {
             @Qualifier("headerFilter") FilterRegistrationBean<HeaderFilter> headerFilter,
             @Qualifier("contentSecurityPolicyFilter") FilterRegistrationBean<ContentSecurityPolicyFilter> contentSecurityPolicyFilter,
             @Qualifier("limitedModeUaaFilter") FilterRegistrationBean<LimitedModeUaaFilter> limitedModeUaaFilter,
-            @Qualifier("zonePathContextRewritingFilter") FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathContextRewritingFilter,
             @Qualifier("identityZoneResolvingFilter") FilterRegistrationBean<IdentityZoneResolvingFilter> identityZoneResolvingFilter,
             @Qualifier("corsFilter") FilterRegistrationBean<CorsFilter> corsFilter,
             @Qualifier("disableIdTokenResponseFilter") FilterRegistrationBean<DisableIdTokenResponseTypeFilter> disableIdTokenResponseFilter,
@@ -171,7 +169,6 @@ public class SpringServletXmlSecurityConfiguration {
         bean.setIgnore(Arrays.asList("secFilterOpen05Healthz"));
         int filterPos = 0;
         Map<SecurityFilterChainPostProcessor.FilterPosition, Filter> additionalFilters = new LinkedHashMap<>();
-        additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), zonePathContextRewritingFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), rateLimitingFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), springRequestContextFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), httpHeaderSecurityFilter.getFilter());

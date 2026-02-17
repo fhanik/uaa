@@ -58,6 +58,8 @@ public class ThymeleafConfig {
         additionalDialects.add(new SpringSecurityDialect());
         springTemplateEngine.setAdditionalDialects(additionalDialects);
 
+        springTemplateEngine.setLinkBuilder(new ZoneAwareStaticResourceLinkBuilder());
+
         return springTemplateEngine;
     }
 

@@ -16,7 +16,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  * ZONE_PATH simulates the effect of {@link org.cloudfoundry.identity.uaa.zone.ZonePathContextRewritingFilter}:
  * the context path includes {@code /z/{subdomain}} and the request path (servlet path) is just the path suffix.
  */
-public enum ZoneResolutionMode {
+public enum ZoneControllerResolutionMode {
     SUBDOMAIN {
         @Override
         public MockHttpServletRequestBuilder createRequestBuilder(String subdomain, HttpMethod method, String contextPath, String pathSuffix) {

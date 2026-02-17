@@ -10,7 +10,7 @@ import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
 import org.cloudfoundry.identity.uaa.constants.OriginKeys;
 import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
 import org.cloudfoundry.identity.uaa.home.BuildInfo;
-import org.cloudfoundry.identity.uaa.util.ZoneResolutionMode;
+import org.cloudfoundry.identity.uaa.util.ZoneControllerResolutionMode;
 import org.cloudfoundry.identity.uaa.oauth.client.ClientConstants;
 import org.cloudfoundry.identity.uaa.security.beans.SecurityContextAccessor;
 import org.cloudfoundry.identity.uaa.util.beans.TestBuildInfo;
@@ -23,7 +23,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpMethod;
 
 import java.util.stream.Stream;
@@ -66,15 +65,14 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.TEXT_HTML;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * MockMvc tests for ProfileController. Parameterized by {@link ZoneResolutionMode} (SUBDOMAIN and ZONE_PATH).
+ * MockMvc tests for ProfileController. Parameterized by {@link ZoneControllerResolutionMode} (SUBDOMAIN and ZONE_PATH).
  * ZONE_PATH tests are expected to fail until ProfileController adds mappings for {@code /z/{subdomain}/profile}.
  */
 @ExtendWith(PollutionPreventionExtension.class)
@@ -207,20 +205,20 @@ class ProfileControllerMockMvcZonePathTests {
         SecurityContextHolder.clearContext();
     }
 
-    private String subdomainFor(ZoneResolutionMode mode) {
-        return mode == ZoneResolutionMode.ZONE_PATH ? ZONE_PATH_SUBDOMAIN : "";
+    private String subdomainFor(ZoneControllerResolutionMode mode) {
+        return mode == ZoneControllerResolutionMode.ZONE_PATH ? ZONE_PATH_SUBDOMAIN : "";
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void getProfile(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void getProfile(ZoneControllerResolutionMode mode) throws Exception {
         String subdomain = subdomainFor(mode);
         getProfile(mockMvc, mode, subdomain, THE_ULTIMATE_APP, currentIdentityZoneId);
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void getProfileNoAppName(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void getProfileNoAppName(ZoneControllerResolutionMode mode) throws Exception {
         UaaClientDetails appClient = new UaaClientDetails("app", "thing", "thing.read,thing.write", GRANT_TYPE_AUTHORIZATION_CODE, "");
         when(clientDetailsService.loadClientByClientId("app", currentIdentityZoneId)).thenReturn(appClient);
         String subdomain = subdomainFor(mode);
@@ -228,8 +226,8 @@ class ProfileControllerMockMvcZonePathTests {
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void specialMessageWhenNoAppsAreAuthorized(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void specialMessageWhenNoAppsAreAuthorized(ZoneControllerResolutionMode mode) throws Exception {
         when(approvalStore.getApprovalsForUser(anyString(), eq(currentIdentityZoneId))).thenReturn(Collections.emptyList());
 
         UaaPrincipal uaaPrincipal = new UaaPrincipal("fake-user-id", "username", "email@example.com", OriginKeys.UAA, null, currentIdentityZoneId);
@@ -244,8 +242,8 @@ class ProfileControllerMockMvcZonePathTests {
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void passwordLinkHiddenWhenUsersOriginIsNotUaa(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void passwordLinkHiddenWhenUsersOriginIsNotUaa(ZoneControllerResolutionMode mode) throws Exception {
         UaaPrincipal uaaPrincipal = new UaaPrincipal("fake-user-id", "username", "email@example.com", OriginKeys.LDAP, "dnEntryForLdapUser", currentIdentityZoneId);
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(uaaPrincipal, null);
         String subdomain = subdomainFor(mode);
@@ -259,16 +257,16 @@ class ProfileControllerMockMvcZonePathTests {
 
     static Stream<Arguments> updateProfilePaths() {
         return Stream.of(
-                Arguments.of(ZoneResolutionMode.SUBDOMAIN, "/profile"),
-                Arguments.of(ZoneResolutionMode.SUBDOMAIN, "/profile/"),
-                Arguments.of(ZoneResolutionMode.ZONE_PATH, "/profile")
+                Arguments.of(ZoneControllerResolutionMode.SUBDOMAIN, "/profile"),
+                Arguments.of(ZoneControllerResolutionMode.SUBDOMAIN, "/profile/"),
+                Arguments.of(ZoneControllerResolutionMode.ZONE_PATH, "/profile")
                 // ZONE_PATH + "/profile/" omitted: MockHttpServletRequestBuilder does not allow servlet path to end with '/'
         );
     }
 
     @ParameterizedTest
     @MethodSource("updateProfilePaths")
-    void updateProfile(ZoneResolutionMode mode, String url) throws Exception {
+    void updateProfile(ZoneControllerResolutionMode mode, String url) throws Exception {
         String subdomain = subdomainFor(mode);
         MockHttpServletRequestBuilder postReq = mode.createRequestBuilder(subdomain, HttpMethod.POST, url)
                 .param("checkedScopes", "app-thing.read")
@@ -276,6 +274,7 @@ class ProfileControllerMockMvcZonePathTests {
                 .param("clientId", "app");
 
         mockMvc.perform(postReq)
+                .andDo(print())
                 .andExpect(status().isFound())
                 .andExpect(redirectedUrl("profile"));
 
@@ -302,8 +301,8 @@ class ProfileControllerMockMvcZonePathTests {
     }
 
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void revokeApp(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void revokeApp(ZoneControllerResolutionMode mode) throws Exception {
         String subdomain = subdomainFor(mode);
         MockHttpServletRequestBuilder postReq = mode.createRequestBuilder(subdomain, HttpMethod.POST, "/profile")
                 .param("checkedScopes", "app-resource.read")
@@ -322,14 +321,14 @@ class ProfileControllerMockMvcZonePathTests {
      * Passes for SUBDOMAIN; will pass for ZONE_PATH once approvals.html and ProfileController are zone path aware.
      */
     @ParameterizedTest
-    @EnumSource(ZoneResolutionMode.class)
-    void approvalsPageContainsZoneAwareChangeEmailChangePasswordAndProfileLinks(ZoneResolutionMode mode) throws Exception {
+    @EnumSource(ZoneControllerResolutionMode.class)
+    void approvalsPageContainsZoneAwareChangeEmailChangePasswordAndProfileLinks(ZoneControllerResolutionMode mode) throws Exception {
         String subdomain = subdomainFor(mode);
-        String expectedChangeEmailHref = mode == ZoneResolutionMode.ZONE_PATH
+        String expectedChangeEmailHref = mode == ZoneControllerResolutionMode.ZONE_PATH
                 ? "href=\"/z/" + ZONE_PATH_SUBDOMAIN + "/change_email\"" : "href=\"/change_email\"";
-        String expectedChangePasswordHref = mode == ZoneResolutionMode.ZONE_PATH
+        String expectedChangePasswordHref = mode == ZoneControllerResolutionMode.ZONE_PATH
                 ? "href=\"/z/" + ZONE_PATH_SUBDOMAIN + "/change_password\"" : "href=\"/change_password\"";
-        String expectedProfileAction = mode == ZoneResolutionMode.ZONE_PATH
+        String expectedProfileAction = mode == ZoneControllerResolutionMode.ZONE_PATH
                 ? "action=\"/z/" + ZONE_PATH_SUBDOMAIN + "/profile\"" : "action=\"/profile\"";
 
         UaaPrincipal uaaPrincipal = new UaaPrincipal(USER_ID, "username", "email@example.com", OriginKeys.UAA, null, currentIdentityZoneId);
@@ -342,7 +341,7 @@ class ProfileControllerMockMvcZonePathTests {
                 .andExpect(content().string(containsString(expectedProfileAction)));
     }
 
-    private static void getProfile(final MockMvc mockMvc, final ZoneResolutionMode mode, final String subdomain, final String name, final String currentIdentityZoneId) throws Exception {
+    private static void getProfile(final MockMvc mockMvc, final ZoneControllerResolutionMode mode, final String subdomain, final String name, final String currentIdentityZoneId) throws Exception {
         UaaPrincipal uaaPrincipal = new UaaPrincipal("fake-user-id", "username", "email@example.com", OriginKeys.UAA, null, currentIdentityZoneId);
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(uaaPrincipal, null);
 

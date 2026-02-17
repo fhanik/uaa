@@ -44,6 +44,12 @@ public class UaaWebApplicationInitializer implements WebApplicationInitializer {
                 EnumSet.of(DispatcherType.REQUEST, DispatcherType.ERROR), false, "/*"
         );
 
+        if (servletContext.getFilterRegistration("zonePathContextRewritingFilter") == null) {
+            DelegatingFilterProxy zonePathContextRewritingFilter = new DelegatingFilterProxy("zonePathContextRewritingFilter", context);
+            FilterRegistration.Dynamic zonePathRegistration = servletContext.addFilter("zonePathContextRewritingFilter", zonePathContextRewritingFilter);
+            zonePathRegistration.addMappingForUrlPatterns(EnumSet.of(DispatcherType.REQUEST, DispatcherType.ERROR), false, "/*");
+        }
+
         //<filter-name>aggregateSpringSecurityFilterChain</filter-name>
         DelegatingFilterProxy springSecurityFilterChain = new DelegatingFilterProxy("springSecurityFilterChain", context);
         FilterRegistration.Dynamic springSecurityFilterChainRegistration = servletContext.addFilter(
