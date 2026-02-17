@@ -300,7 +300,7 @@ public class InvitationsController {
 
             model.addAttribute(errorCode, error);
             model.addAttribute("code", newCode);
-            return "redirect:accept";
+            return "redirect:/invitations/accept";
         } catch (EmptyResultDataAccessException noProviderFound) {
             log.debug("No available invitation providers for email:%s, id:%s".formatted(codeData.get(EMAIL), codeData.get("user_id")));
             return handleUnprocessableEntity(model, response, "error_message_code", "no_suitable_idp", "invitations/accept_invite");

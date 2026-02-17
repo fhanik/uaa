@@ -24,6 +24,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.util.StringUtils;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -49,6 +51,48 @@ public class IdentityZoneResolvingFilter extends OncePerRequestFilter implements
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        String subdomainFromPath = (String) request.getAttribute(ZonePathContextRewritingFilter.ZONE_SUBDOMAIN_FROM_PATH);
+        // Fallback when request was already rewritten (e.g. test simulates post-rewrite with context path set)
+        if (subdomainFromPath == null) {
+            subdomainFromPath = extractSubdomainFromContextPath(request.getContextPath());
+        }
+
+        if (subdomainFromPath != null) {
+            String subdomainFromHost = getSubdomain(request.getServerName());
+            if (subdomainFromHost != null && !subdomainFromHost.isEmpty()) {
+                response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Cannot use both subdomain and zone path");
+                return;
+            }
+            IdentityZone identityZone = null;
+            try {
+                identityZone = dao.retrieveBySubdomain(subdomainFromPath);
+            } catch (EmptyResultDataAccessException ex) {
+                logger.debug("Cannot find identity zone for subdomain {}", subdomainFromPath);
+            } catch (Exception ex) {
+                String message = "Internal server error while fetching identity zone for subdomain " + subdomainFromPath;
+                logger.warn(message, ex);
+                response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, message);
+                return;
+            }
+            if (identityZone == null) {
+                boolean isStaticResource = staticResources.stream().anyMatch(UaaUrlUtils.getRequestPath(request)::startsWith);
+                if (isStaticResource) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                request.setAttribute("error_message_code", "zone.not.found");
+                response.sendError(HttpServletResponse.SC_NOT_FOUND, "Cannot find identity zone for subdomain " + subdomainFromPath);
+                return;
+            }
+            try {
+                IdentityZoneHolder.set(identityZone);
+                filterChain.doFilter(request, response);
+            } finally {
+                IdentityZoneHolder.clear();
+            }
+            return;
+        }
+
         IdentityZone identityZone = null;
         String hostname = request.getServerName();
         String subdomain = getSubdomain(hostname);
@@ -82,6 +126,27 @@ public class IdentityZoneResolvingFilter extends OncePerRequestFilter implements
         } finally {
             IdentityZoneHolder.clear();
         }
+    }
+
+    private static final String ZONE_PATH_PREFIX = "/z/";
+
+    /**
+     * If context path ends with /z/{subdomain}, return the subdomain; otherwise null.
+     * Supports both /z/myzone and /uaa/z/myzone. Allows zone resolution when the request
+     * was already rewritten (e.g. tests simulating post-rewrite with context path set).
+     */
+    private String extractSubdomainFromContextPath(String contextPath) {
+        if (!StringUtils.hasText(contextPath) || !contextPath.contains(ZONE_PATH_PREFIX)) {
+            return null;
+        }
+        int idx = contextPath.lastIndexOf(ZONE_PATH_PREFIX);
+        if (idx < 0) {
+            return null;
+        }
+        String after = contextPath.substring(idx + ZONE_PATH_PREFIX.length());
+        int slash = after.indexOf('/');
+        String subdomain = slash < 0 ? after : after.substring(0, slash);
+        return StringUtils.hasText(subdomain) ? subdomain : null;
     }
 
     private String getSubdomain(String hostname) {

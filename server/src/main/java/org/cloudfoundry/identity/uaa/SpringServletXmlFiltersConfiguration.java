@@ -20,6 +20,7 @@ import org.cloudfoundry.identity.uaa.web.LimitedModeUaaFilter;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneProvisioning;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneResolvingFilter;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
+import org.cloudfoundry.identity.uaa.zone.ZonePathContextRewritingFilter;
 import org.cloudfoundry.identity.uaa.zone.beans.IdentityZoneManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -164,6 +165,14 @@ public class SpringServletXmlFiltersConfiguration {
     ) {
         DisableInternalUserManagementFilter filter = new DisableInternalUserManagementFilter(provisioning, identityZoneManager);
         FilterRegistrationBean<DisableInternalUserManagementFilter> bean = new FilterRegistrationBean<>(filter);
+        bean.setEnabled(false);
+        return bean;
+    }
+
+    @Bean
+    FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathContextRewritingFilter() {
+        ZonePathContextRewritingFilter filter = new ZonePathContextRewritingFilter();
+        FilterRegistrationBean<ZonePathContextRewritingFilter> bean = new FilterRegistrationBean<>(filter);
         bean.setEnabled(false);
         return bean;
     }
