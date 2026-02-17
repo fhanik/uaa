@@ -15,6 +15,7 @@ package org.cloudfoundry.identity.uaa.zone;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -235,5 +236,194 @@ class ZonePathContextRewritingFilterTests {
         assertThat(passed.getContextPath()).isEqualTo("/uaa/z/my-zone-name");
         assertThat(passed.getServletPath()).isEqualTo("/login");
         assertThat(passed.getAttribute(ZonePathContextRewritingFilter.ZONE_SUBDOMAIN_FROM_PATH)).isEqualTo("my-zone-name");
+    }
+
+    // --- Cookie path rewriting (addCookie) ---
+
+    @Test
+    void cookieWithPathSlash_whenZonePathRewritten_rewritesToOriginalContextPath() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> {
+            Cookie c = new Cookie("TestCookie", "value");
+            c.setPath("/");
+            ((HttpServletResponse) res).addCookie(c);
+        };
+        filter.doFilter(request, response, chain);
+
+        Cookie[] cookies = response.getCookies();
+        assertThat(cookies).hasSize(1);
+        assertThat(cookies[0].getPath()).isEqualTo("/uaa");
+    }
+
+    @Test
+    void cookieWithPathOtherThanSlash_whenZonePathRewritten_leavesPathUnchanged() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> {
+            Cookie c = new Cookie("X", "v");
+            c.setPath("/uaa/other");
+            ((HttpServletResponse) res).addCookie(c);
+        };
+        filter.doFilter(request, response, chain);
+
+        Cookie[] cookies = response.getCookies();
+        assertThat(cookies).hasSize(1);
+        assertThat(cookies[0].getPath()).isEqualTo("/uaa/other");
+    }
+
+    @Test
+    void cookieWithPathNull_whenZonePathRewritten_rewritesToOriginalContextPath() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> {
+            Cookie c = new Cookie("S", "v");
+            ((HttpServletResponse) res).addCookie(c);
+        };
+        filter.doFilter(request, response, chain);
+
+        Cookie[] cookies = response.getCookies();
+        assertThat(cookies).hasSize(1);
+        assertThat(cookies[0].getPath()).isEqualTo("/uaa");
+    }
+
+    @Test
+    void noZonePath_responseNotWrapped_cookiePathUnchanged() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/login");
+
+        FilterChain chain = (req, res) -> {
+            Cookie c = new Cookie("A", "b");
+            c.setPath("/");
+            ((HttpServletResponse) res).addCookie(c);
+        };
+        filter.doFilter(request, response, chain);
+
+        Cookie[] cookies = response.getCookies();
+        assertThat(cookies).hasSize(1);
+        assertThat(cookies[0].getPath()).isEqualTo("/");
+    }
+
+    @Test
+    void emptyOriginalContextPath_cookiePathRemainsSlash() throws ServletException, IOException {
+        request.setContextPath("");
+        request.setRequestURI("/z/myzone/login");
+
+        FilterChain chain = (req, res) -> {
+            Cookie c = new Cookie("C", "d");
+            c.setPath("/");
+            ((HttpServletResponse) res).addCookie(c);
+        };
+        filter.doFilter(request, response, chain);
+
+        Cookie[] cookies = response.getCookies();
+        assertThat(cookies).hasSize(1);
+        assertThat(cookies[0].getPath()).isEqualTo("/");
+    }
+
+    @Test
+    void originalContextPathSingleSlash_cookiePathRemainsSlash() throws ServletException, IOException {
+        request.setContextPath("/");
+        request.setRequestURI("/z/rootzone/login");
+
+        FilterChain chain = (req, res) -> {
+            Cookie c = new Cookie("K", "v");
+            c.setPath("/");
+            ((HttpServletResponse) res).addCookie(c);
+        };
+        filter.doFilter(request, response, chain);
+
+        Cookie[] cookies = response.getCookies();
+        assertThat(cookies).hasSize(1);
+        assertThat(cookies[0].getPath()).isEqualTo("/");
+    }
+
+    @Test
+    void multipleCookies_mixedPaths_rewritesOnlySlashPath() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> {
+            HttpServletResponse httpRes = (HttpServletResponse) res;
+            Cookie c1 = new Cookie("One", "1");
+            c1.setPath("/");
+            httpRes.addCookie(c1);
+            Cookie c2 = new Cookie("Two", "2");
+            c2.setPath("/custom");
+            httpRes.addCookie(c2);
+        };
+        filter.doFilter(request, response, chain);
+
+        Cookie[] cookies = response.getCookies();
+        assertThat(cookies).hasSize(2);
+        assertThat(cookies[0].getPath()).isEqualTo("/uaa");
+        assertThat(cookies[1].getPath()).isEqualTo("/custom");
+    }
+
+    // --- Set-Cookie header (addHeader / setHeader) ---
+
+    @Test
+    void addHeaderSetCookie_withPathSlash_whenZonePathRewritten_rewritesPathToOriginalContext() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).addHeader("Set-Cookie", "MyCookie=val; Path=/; HttpOnly");
+        filter.doFilter(request, response, chain);
+
+        String header = response.getHeader("Set-Cookie");
+        assertThat(header).contains("Path=/uaa");
+        assertThat(header).contains("HttpOnly");
+    }
+
+    @Test
+    void addHeaderSetCookie_withNoPath_whenZonePathRewritten_addsPathOriginalContext() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).addHeader("Set-Cookie", "Session=abc; HttpOnly");
+        filter.doFilter(request, response, chain);
+
+        String header = response.getHeader("Set-Cookie");
+        assertThat(header).contains("Path=/uaa");
+    }
+
+    @Test
+    void addHeaderSetCookie_withPathOtherThanSlash_whenZonePathRewritten_leavesPathUnchanged() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).addHeader("Set-Cookie", "X=1; Path=/uaa/other");
+        filter.doFilter(request, response, chain);
+
+        String header = response.getHeader("Set-Cookie");
+        assertThat(header).contains("Path=/uaa/other");
+    }
+
+    @Test
+    void setHeaderSetCookie_withPathSlash_whenZonePathRewritten_rewritesPathToOriginalContext() throws ServletException, IOException {
+        request.setContextPath("/uaa");
+        request.setRequestURI("/uaa/z/myzone/login");
+
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).setHeader("Set-Cookie", "Foo=bar; Path=/; Secure");
+        filter.doFilter(request, response, chain);
+
+        String header = response.getHeader("Set-Cookie");
+        assertThat(header).contains("Path=/uaa");
+        assertThat(header).contains("Secure");
+    }
+
+    @Test
+    void addHeaderSetCookie_withPathSlash_whenNoContextPath_leavesPathSlash() throws ServletException, IOException {
+        request.setContextPath("");
+        request.setRequestURI("/z/myzone/login");
+
+        FilterChain chain = (req, res) -> ((HttpServletResponse) res).addHeader("Set-Cookie", "A=B; Path=/");
+        filter.doFilter(request, response, chain);
+
+        String header = response.getHeader("Set-Cookie");
+        assertThat(header).contains("Path=/");
     }
 }

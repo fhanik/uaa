@@ -15,13 +15,18 @@ package org.cloudfoundry.identity.uaa.zone;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponseWrapper;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Runs first in the filter chain. If the request path (after context path) starts with
@@ -86,7 +91,9 @@ public class ZonePathContextRewritingFilter extends OncePerRequestFilter {
         HttpServletRequest wrappedRequest = new ZonePathRewrittenRequest(request, newContextPath, pathAfterZonePrefix);
         wrappedRequest.setAttribute(ZONE_SUBDOMAIN_FROM_PATH, subdomain);
 
-        filterChain.doFilter(wrappedRequest, response);
+        String originalContextPath = contextPath;
+        HttpServletResponse wrappedResponse = new CookiePathRewritingResponse(response, originalContextPath);
+        filterChain.doFilter(wrappedRequest, wrappedResponse);
     }
 
     /**
@@ -160,6 +167,113 @@ public class ZonePathContextRewritingFilter extends OncePerRequestFilter {
             }
             url.append(requestURI);
             return new StringBuffer(url);
+        }
+    }
+
+    private static final String SET_COOKIE_HEADER = "Set-Cookie";
+
+    /**
+     * Wraps the response and rewrites cookie paths when the request was rewritten for a zone path:
+     * cookies with path "/" (or null) get path set to the original context path (e.g. /uaa).
+     * If there is no context path (empty or "/"), cookie path is left as "/".
+     */
+    private static final class CookiePathRewritingResponse extends HttpServletResponseWrapper {
+
+        private final String originalContextPath;
+
+        CookiePathRewritingResponse(HttpServletResponse response, String originalContextPath) {
+            super(response);
+            this.originalContextPath = originalContextPath != null ? originalContextPath : "";
+        }
+
+        private HttpServletResponse getHttpResponse() {
+            return (HttpServletResponse) getResponse();
+        }
+
+        @Override
+        public void addCookie(Cookie cookie) {
+            Cookie toAdd = cookie;
+            if (shouldRewritePath(cookie.getPath())) {
+                toAdd = cloneCookieWithPath(cookie, effectiveCookiePath());
+            }
+            getHttpResponse().addCookie(toAdd);
+        }
+
+        @Override
+        public void addHeader(String name, String value) {
+            if (SET_COOKIE_HEADER.equalsIgnoreCase(name)) {
+                getHttpResponse().addHeader(name, rewriteSetCookieHeaderValue(value));
+            } else {
+                getHttpResponse().addHeader(name, value);
+            }
+        }
+
+        @Override
+        public void setHeader(String name, String value) {
+            if (SET_COOKIE_HEADER.equalsIgnoreCase(name)) {
+                getHttpResponse().setHeader(name, rewriteSetCookieHeaderValue(value));
+            } else {
+                getHttpResponse().setHeader(name, value);
+            }
+        }
+
+        private boolean shouldRewritePath(String path) {
+            if (originalContextPath.isEmpty() || "/".equals(originalContextPath)) {
+                return false;
+            }
+            return path == null || "/".equals(path);
+        }
+
+        private String effectiveCookiePath() {
+            return originalContextPath.isEmpty() || "/".equals(originalContextPath) ? "/" : originalContextPath;
+        }
+
+        private Cookie cloneCookieWithPath(Cookie source, String path) {
+            Cookie copy = new Cookie(source.getName(), source.getValue());
+            copy.setPath(path);
+            if (source.getMaxAge() >= 0) {
+                copy.setMaxAge(source.getMaxAge());
+            }
+            copy.setSecure(source.getSecure());
+            copy.setHttpOnly(source.isHttpOnly());
+            if (source.getDomain() != null) {
+                copy.setDomain(source.getDomain());
+            }
+            return copy;
+        }
+
+        private String rewriteSetCookieHeaderValue(String headerValue) {
+            if (headerValue == null) {
+                return null;
+            }
+            if (originalContextPath.isEmpty() || "/".equals(originalContextPath)) {
+                return headerValue;
+            }
+            String pathToUse = originalContextPath;
+            String[] parts = headerValue.split(";");
+            List<String> result = new ArrayList<>();
+            boolean pathFound = false;
+            for (String part : parts) {
+                String trimmed = part.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                if (trimmed.toLowerCase(Locale.ROOT).startsWith("path=")) {
+                    pathFound = true;
+                    String currentPath = trimmed.substring(5).trim();
+                    if ("/".equals(currentPath)) {
+                        result.add("Path=" + pathToUse);
+                    } else {
+                        result.add(trimmed);
+                    }
+                } else {
+                    result.add(trimmed);
+                }
+            }
+            if (!pathFound) {
+                result.add("Path=" + pathToUse);
+            }
+            return String.join("; ", result);
         }
     }
 }
