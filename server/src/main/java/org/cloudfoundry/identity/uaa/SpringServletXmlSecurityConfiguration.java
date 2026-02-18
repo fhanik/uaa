@@ -18,8 +18,10 @@ import org.cloudfoundry.identity.uaa.web.FilterChainOrder;
 import org.cloudfoundry.identity.uaa.web.HeaderFilter;
 import org.cloudfoundry.identity.uaa.web.LimitedModeUaaFilter;
 import org.cloudfoundry.identity.uaa.web.UaaFilterChain;
+import org.cloudfoundry.identity.uaa.session.ZoneNamespacedSessionFilter;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneResolvingFilter;
 import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -139,6 +141,7 @@ public class SpringServletXmlSecurityConfiguration {
             @Qualifier("contentSecurityPolicyFilter") FilterRegistrationBean<ContentSecurityPolicyFilter> contentSecurityPolicyFilter,
             @Qualifier("limitedModeUaaFilter") FilterRegistrationBean<LimitedModeUaaFilter> limitedModeUaaFilter,
             @Qualifier("identityZoneResolvingFilter") FilterRegistrationBean<IdentityZoneResolvingFilter> identityZoneResolvingFilter,
+            @Autowired(required = false) @Qualifier("zoneNamespacedSessionFilterRegistration") FilterRegistrationBean<ZoneNamespacedSessionFilter> zoneNamespacedSessionFilter,
             @Qualifier("corsFilter") FilterRegistrationBean<CorsFilter> corsFilter,
             @Qualifier("disableIdTokenResponseFilter") FilterRegistrationBean<DisableIdTokenResponseTypeFilter> disableIdTokenResponseFilter,
             @Qualifier("saml2WebSsoAuthenticationRequestFilter") FilterRegistrationBean<Filter> saml2WebSsoAuthenticationRequestFilter,
@@ -172,7 +175,7 @@ public class SpringServletXmlSecurityConfiguration {
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), rateLimitingFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), springRequestContextFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), httpHeaderSecurityFilter.getFilter());
-        additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), tracingFilter.getFilter());
+        //additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), tracingFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), metricsFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), headerFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), new BackwardsCompatibleScopeParsingFilter());
@@ -180,6 +183,10 @@ public class SpringServletXmlSecurityConfiguration {
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), utf8ConversionFilter);
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), limitedModeUaaFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), identityZoneResolvingFilter.getFilter());
+        if (zoneNamespacedSessionFilter != null) {
+            additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.after(IdentityZoneResolvingFilter.class), zoneNamespacedSessionFilter.getFilter());
+            filterPos += 2; // after IdentityZoneResolvingFilter and our filter
+        }
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), corsFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), disableIdTokenResponseFilter.getFilter());
         additionalFilters.put(SecurityFilterChainPostProcessor.FilterPosition.position(filterPos++), saml2WebSsoAuthenticationRequestFilter.getFilter());
