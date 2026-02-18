@@ -21,6 +21,7 @@ import org.cloudfoundry.identity.uaa.oauth.provider.error.OAuth2AccessDeniedHand
 import org.cloudfoundry.identity.uaa.oauth.provider.error.OAuth2AuthenticationEntryPoint;
 import org.cloudfoundry.identity.uaa.provider.saml.UaaDelegatingLogoutSuccessHandler;
 import org.cloudfoundry.identity.uaa.scim.DisableUserManagementSecurityFilter;
+import org.cloudfoundry.identity.uaa.session.ZoneNamespacedSessionFilter;
 import org.cloudfoundry.identity.uaa.security.CsrfAwareEntryPointAndDeniedHandler;
 import org.cloudfoundry.identity.uaa.security.web.CookieBasedCsrfTokenRepository;
 import org.cloudfoundry.identity.uaa.security.web.HttpsHeaderFilter;
@@ -28,6 +29,7 @@ import org.cloudfoundry.identity.uaa.security.web.UaaRequestMatcher;
 import org.cloudfoundry.identity.uaa.web.FilterChainOrder;
 import org.cloudfoundry.identity.uaa.web.UaaFilterChain;
 import org.cloudfoundry.identity.uaa.web.UaaSavedRequestCache;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -567,19 +569,22 @@ class LoginSecurityConfiguration {
     FilterRegistrationBean<LogoutFilter> logoutFilter(
             UaaDelegatingLogoutSuccessHandler delegatingLogoutSuccessHandler,
             UaaAuthenticationFailureHandler authenticationFailureHandler,
-            CookieBasedCsrfTokenRepository loginCookieCsrfRepository
+            CookieBasedCsrfTokenRepository loginCookieCsrfRepository,
+            @Autowired(required = false) ZoneNamespacedSessionFilter zoneNamespacedSessionFilter
     ) {
-
         SecurityContextLogoutHandler securityContextLogoutHandlerWithHandler = new SecurityContextLogoutHandler();
         CsrfLogoutHandler csrfLogoutHandler = new CsrfLogoutHandler(loginCookieCsrfRepository);
-        CookieClearingLogoutHandler cookieClearingLogoutHandlerWithHandler = new CookieClearingLogoutHandler("JSESSIONID");
+        List<org.springframework.security.web.authentication.logout.LogoutHandler> logoutHandlers = new java.util.ArrayList<>(
+                List.of(authenticationFailureHandler, securityContextLogoutHandlerWithHandler, csrfLogoutHandler));
+        // When zone-namespaced sessions are in use, do not clear JSESSIONID on logout; ZoneNamespacedSessionFilter
+        // clears it only when the last zone session for that id is removed.
+        if (zoneNamespacedSessionFilter == null) {
+            logoutHandlers.add(new CookieClearingLogoutHandler("JSESSIONID"));
+        }
 
         LogoutFilter logoutFilter = new LogoutFilter(
                 delegatingLogoutSuccessHandler,
-                authenticationFailureHandler,
-                securityContextLogoutHandlerWithHandler,
-                csrfLogoutHandler,
-                cookieClearingLogoutHandlerWithHandler
+                logoutHandlers.toArray(new org.springframework.security.web.authentication.logout.LogoutHandler[0])
         );
         logoutFilter.setLogoutRequestMatcher(new AntPathRequestMatcher("/logout.do"));
         FilterRegistrationBean<LogoutFilter> bean = new FilterRegistrationBean<>(logoutFilter);

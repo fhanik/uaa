@@ -8,6 +8,7 @@ import org.cloudfoundry.identity.uaa.impl.config.YamlServletProfileInitializer;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.zone.ZonePathContextRewritingFilter;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
@@ -73,6 +74,7 @@ class TestPropertyInitializer implements ApplicationContextInitializer<Configura
     }
 }
 
+
 class TestClientAndMockMvcTestConfig {
     @Bean
     public MockMvc mockMvc(
@@ -82,8 +84,7 @@ class TestClientAndMockMvcTestConfig {
     ) {
         return MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilter(zonePathFilterRegistration.getFilter())
-                .addFilter(securityFilterChain)
-                .build();
+                .addFilter(securityFilterChain).build();
     }
 
     @Bean

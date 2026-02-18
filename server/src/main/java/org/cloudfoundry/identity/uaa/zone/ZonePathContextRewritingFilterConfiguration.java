@@ -17,7 +17,7 @@ public class ZonePathContextRewritingFilterConfiguration {
         ZonePathContextRewritingFilter filter = new ZonePathContextRewritingFilter();
         FilterRegistrationBean<ZonePathContextRewritingFilter> bean = new FilterRegistrationBean<>(filter);
         bean.addUrlPatterns("/*");
-        bean.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE + 50); // before Spring Security (default -100)
+        bean.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE + 48); // before SessionZoneResolutionFilter and SessionRepositoryFilter
         return bean;
     }
 }
