@@ -108,7 +108,7 @@ public class DefaultIntegrationTestConfig {
                 "--disable-infobars"
         );
         options.setAcceptInsecureCerts(true);
-        
+
         // Set page load strategy to 'normal' to ensure proper page load detection
         options.setPageLoadStrategy(org.openqa.selenium.PageLoadStrategy.NORMAL);
 

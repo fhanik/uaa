@@ -14,13 +14,11 @@
 package org.cloudfoundry.identity.uaa.session;
 
 import org.cloudfoundry.identity.uaa.UaaProperties;
-import org.cloudfoundry.identity.uaa.zone.IdentityZoneResolvingFilter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.core.Ordered;
 import org.springframework.session.MapSessionRepository;
 import org.springframework.session.SessionRepository;
 
@@ -28,8 +26,9 @@ import java.time.Duration;
 
 /**
  * Configuration for zone-namespaced session support (path-based zones).
- * When using memory session store, provides a repository that namespaces sessions by (sessionId, zoneId)
- * and ensures zone resolution runs before session resolution at servlet level.
+ * When using memory session store, provides a repository that namespaces sessions by (sessionId, zoneId).
+ * ZoneNamespacedSessionFilter runs in the security chain after IdentityZoneResolvingFilter (so zone
+ * and rate limiting etc. are unchanged).
  */
 @Configuration
 @ConditionalOnBean(MapSessionRepository.class)
@@ -48,26 +47,16 @@ public class ZoneSessionConfiguration {
         return new ZoneNamespacedSessionFilter();
     }
 
+    /**
+     * Registration is disabled so the filter is only added via the security chain
+     * (after IdentityZoneResolvingFilter), not at servlet level.
+     */
     @Bean
     public FilterRegistrationBean<ZoneNamespacedSessionFilter> zoneNamespacedSessionFilterRegistration(
             ZoneNamespacedSessionFilter zoneNamespacedSessionFilter) {
         FilterRegistrationBean<ZoneNamespacedSessionFilter> bean =
                 new FilterRegistrationBean<>(zoneNamespacedSessionFilter);
         bean.setEnabled(false);
-        return bean;
-    }
-
-    /**
-     * Registers IdentityZoneResolvingFilter at servlet level with highest precedence
-     * so that zone is set before SessionRepositoryFilter runs.
-     */
-    @Bean
-    public FilterRegistrationBean<IdentityZoneResolvingFilter> zoneResolutionServletFilterRegistration(
-            IdentityZoneResolvingFilter identityZoneResolvingFilter) {
-        FilterRegistrationBean<IdentityZoneResolvingFilter> bean =
-                new FilterRegistrationBean<>(identityZoneResolvingFilter);
-        bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
-        bean.addUrlPatterns("/*");
         return bean;
     }
 

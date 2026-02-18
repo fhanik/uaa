@@ -38,6 +38,8 @@ public class ZoneNamespacedSessionRepository implements SessionRepository<Sessio
 
     private static final String REQUEST_ATTR_PREVIOUS_SESSION_ID = ZoneNamespacedSessionRepository.class.getName() + ".previousSessionId";
     static final String REQUEST_ATTR_CLEAR_SESSION_COOKIE = ZoneNamespacedSessionRepository.class.getName() + ".clearSessionCookie";
+    /** Session attribute holding the zone id for this request; used as fallback in save() when request attribute is cleared. */
+    static final String SESSION_ATTR_ZONE_ID = ZoneNamespacedSessionRepository.class.getName() + ".zoneId";
 
     private static final Logger logger = LoggerFactory.getLogger(ZoneNamespacedSessionRepository.class);
 
@@ -53,12 +55,14 @@ public class ZoneNamespacedSessionRepository implements SessionRepository<Sessio
 
     @Override
     public void save(Session session) {
-        String zoneId = getZoneId();
+        String zoneId = getZoneIdForSave(session);
         String sessionId = session.getId();
 
         migrateFromPreviousSessionIdIfNeeded(sessionId);
 
-        store.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>()).put(zoneId, copySession(session));
+        Session toStore = copySession(session);
+        toStore.removeAttribute(SESSION_ATTR_ZONE_ID); // do not persist internal attribute
+        store.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>()).put(zoneId, toStore);
     }
 
     @Override
@@ -69,7 +73,12 @@ public class ZoneNamespacedSessionRepository implements SessionRepository<Sessio
         String zoneId = getZoneId();
         Map<String, Session> zoneSessions = store.get(id);
         if (zoneSessions == null) {
-            return null;
+            // First time seeing this session id (e.g. client sent JSESSIONID): return empty session with same id
+            // so the filter does not call createSession() (new id would replace the cookie).
+            Session newSlot = new MapSession(id);
+            newSlot.setMaxInactiveInterval(defaultMaxInactiveInterval);
+            setZoneIdOnSession(newSlot, zoneId);
+            return newSlot;
         }
         Session session = zoneSessions.get(zoneId);
         if (session == null || session.isExpired()) {
@@ -77,9 +86,21 @@ public class ZoneNamespacedSessionRepository implements SessionRepository<Sessio
                 zoneSessions.remove(zoneId);
                 removeSessionIdIfEmpty(id);
             }
-            return null;
+            // If no other zone has this id (e.g. expired was the only one), return null so filter creates a new session.
+            if (store.get(id) == null) {
+                return null;
+            }
+            // Same cookie, different zone: return a new empty session with the same id so the filter
+            // does not call createSession() (which would assign a new id and replace the cookie).
+            // save() will then store this zone's session under (id, zoneId).
+            Session newSlot = new MapSession(id);
+            newSlot.setMaxInactiveInterval(defaultMaxInactiveInterval);
+            setZoneIdOnSession(newSlot, zoneId);
+            return newSlot;
         }
-        return copySession(session);
+        Session copy = copySession(session);
+        setZoneIdOnSession(copy, zoneId);
+        return copy;
     }
 
     @Override
@@ -104,11 +125,37 @@ public class ZoneNamespacedSessionRepository implements SessionRepository<Sessio
     }
 
     private String getZoneId() {
+        HttpServletRequest request = currentRequest();
+        if (request != null) {
+            String zoneId = (String) request.getAttribute(
+                    org.cloudfoundry.identity.uaa.session.SessionZoneResolutionFilter.REQUEST_ATTR_ZONE_ID_FOR_SESSION);
+            if (zoneId != null) {
+                return zoneId;
+            }
+        }
         try {
             return IdentityZoneHolder.get().getId();
         } catch (Exception e) {
             logger.debug("No identity zone in holder, using default");
             return "uaa";
+        }
+    }
+
+    /** Zone id for save(); uses request/holder first, then session attribute (for when save runs after filter clears holder). */
+    private String getZoneIdForSave(Session session) {
+        String zoneId = getZoneId();
+        if ("uaa".equals(zoneId) && session != null) {
+            String fromSession = (String) session.getAttribute(SESSION_ATTR_ZONE_ID);
+            if (fromSession != null) {
+                return fromSession;
+            }
+        }
+        return zoneId;
+    }
+
+    private static void setZoneIdOnSession(Session session, String zoneId) {
+        if (session != null && zoneId != null) {
+            session.setAttribute(SESSION_ATTR_ZONE_ID, zoneId);
         }
     }
 

@@ -6,8 +6,10 @@ import org.cloudfoundry.identity.uaa.db.beans.JdbcUrlCustomizer;
 import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
 import org.cloudfoundry.identity.uaa.impl.config.YamlServletProfileInitializer;
 import org.cloudfoundry.identity.uaa.test.TestClient;
+import org.cloudfoundry.identity.uaa.session.SessionZoneResolutionFilter;
 import org.cloudfoundry.identity.uaa.zone.ZonePathContextRewritingFilter;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
@@ -15,6 +17,8 @@ import org.springframework.boot.autoconfigure.session.SessionAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.PropertySource;
 import org.springframework.lang.NonNull;
 import org.springframework.lang.Nullable;
 import org.springframework.mock.web.MockRequestDispatcher;
@@ -28,11 +32,14 @@ import org.springframework.web.context.ConfigurableWebApplicationContext;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
+import jakarta.servlet.Filter;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.util.EventListener;
+import java.util.Map;
 
 import static org.springframework.security.config.BeanIds.SPRING_SECURITY_FILTER_CHAIN;
 
@@ -65,6 +72,20 @@ import static org.springframework.security.config.BeanIds.SPRING_SECURITY_FILTER
 public @interface DefaultTestContext {
 }
 
+/**
+ * Adds {@code servlet.session-store=memory} with highest precedence so the context
+ * uses ZoneNamespacedSessionRepository. Used by {@link ZonePathSessionTestContext}.
+ */
+class AlwaysMemorySessionInitializer implements ApplicationContextInitializer<ConfigurableWebApplicationContext> {
+
+    @Override
+    public void initialize(ConfigurableWebApplicationContext applicationContext) {
+        PropertySource<?> source = new MapPropertySource("zoneSessionTestOverrides",
+                Map.of("servlet.session-store", "memory"));
+        applicationContext.getEnvironment().getPropertySources().addFirst(source);
+    }
+}
+
 class TestPropertyInitializer implements ApplicationContextInitializer<ConfigurableWebApplicationContext> {
 
     @Override
@@ -73,17 +94,26 @@ class TestPropertyInitializer implements ApplicationContextInitializer<Configura
     }
 }
 
+
 class TestClientAndMockMvcTestConfig {
     @Bean
     public MockMvc mockMvc(
             WebApplicationContext webApplicationContext,
             @Qualifier(SPRING_SECURITY_FILTER_CHAIN) FilterChainProxy securityFilterChain,
-            @Qualifier(ZonePathContextRewritingFilter.BEAN_NAME) org.springframework.boot.web.servlet.FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathFilterRegistration
+            @Qualifier(ZonePathContextRewritingFilter.BEAN_NAME) org.springframework.boot.web.servlet.FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathFilterRegistration,
+            @Autowired(required = false) SessionZoneResolutionFilter sessionZoneResolutionFilter,
+            @Autowired(required = false) @Qualifier("springSessionRepositoryFilter") Filter springSessionRepositoryFilter
     ) {
-        return MockMvcBuilders.webAppContextSetup(webApplicationContext)
+        var builder = MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilter(zonePathFilterRegistration.getFilter())
-                .addFilter(securityFilterChain)
-                .build();
+                ;
+        if (sessionZoneResolutionFilter != null) {
+            builder.addFilter(sessionZoneResolutionFilter);
+        }
+        if (springSessionRepositoryFilter != null) {
+            builder.addFilter(springSessionRepositoryFilter);
+        }
+        return builder.addFilter(securityFilterChain).build();
     }
 
     @Bean

@@ -71,15 +71,14 @@ class ZoneNamespacedSessionRepositoryTest {
         other.setId("other-zone");
         other.setSubdomain("other");
         IdentityZoneHolder.set(other);
-        Session foundOther = repository.findById(id);
-        assertThat(foundOther).isNull();
-
-        Session otherSession = repository.createSession();
-        ((MapSession) otherSession).setId(id);
+        // Same cookie, different zone: findById returns an empty session with the same id (no new cookie)
+        Session otherSession = repository.findById(id);
+        assertThat(otherSession).isNotNull();
+        assertThat(otherSession.getId()).isEqualTo(id);
         otherSession.setAttribute("key", "other-value");
         repository.save(otherSession);
 
-        foundOther = repository.findById(id);
+        Session foundOther = repository.findById(id);
         assertThat(foundOther).isNotNull();
         assertThat((String) foundOther.getAttribute("key")).isEqualTo("other-value");
 
@@ -100,13 +99,18 @@ class ZoneNamespacedSessionRepositoryTest {
         other.setId("other-zone");
         other.setSubdomain("other");
         IdentityZoneHolder.set(other);
-        Session otherSession = repository.createSession();
-        ((MapSession) otherSession).setId(id);
+        Session otherSession = repository.findById(id);
+        assertThat(otherSession).isNotNull();
         repository.save(otherSession);
 
         repository.deleteById(id);
 
-        assertThat(repository.findById(id)).isNull();
+        // Other zone: no session data but same cookie; findById returns empty session with same id (may have internal zone id attribute)
+        Session found = repository.findById(id);
+        assertThat(found).isNotNull();
+        var names = new java.util.HashSet<>(found.getAttributeNames());
+        names.remove(ZoneNamespacedSessionRepository.SESSION_ATTR_ZONE_ID);
+        assertThat(names).isEmpty();
         IdentityZoneHolder.set(IdentityZone.getUaa());
         assertThat(repository.findById(id)).isNotNull();
     }
@@ -133,8 +137,8 @@ class ZoneNamespacedSessionRepositoryTest {
         other.setId("other-zone");
         other.setSubdomain("other");
         IdentityZoneHolder.set(other);
-        Session otherSession = repository.createSession();
-        ((MapSession) otherSession).setId(id);
+        Session otherSession = repository.findById(id);
+        assertThat(otherSession).isNotNull();
         repository.save(otherSession);
 
         IdentityZoneHolder.set(IdentityZone.getUaa());
@@ -157,7 +161,9 @@ class ZoneNamespacedSessionRepositoryTest {
         newSession.setAttribute("k", "v2");
         repository.save(newSession);
 
-        assertThat(repository.findById("old-id")).isNull();
+        // After migration old-id is removed from store; findById may return empty session for client-sent id
+        Session oldFound = repository.findById("old-id");
+        assertThat(oldFound == null || oldFound.getAttribute("k") == null).isTrue();
         assertThat(repository.findById("new-id")).isNotNull();
         assertThat((String) repository.findById("new-id").getAttribute("k")).isEqualTo("v2");
 

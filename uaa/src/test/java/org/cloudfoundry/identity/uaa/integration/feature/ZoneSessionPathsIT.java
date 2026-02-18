@@ -150,6 +150,19 @@ class ZoneSessionPathsIT {
         webDriver.get(zonePathUrl(ZONE2) + "/profile");
         assertThat(webDriver.findElement(By.cssSelector("h1")).getText()).contains("Account Settings");
         assertThat(webDriver.getPageSource()).contains(userZone2Email);
+
+        //lets move around too
+        webDriver.get(baseUrl + "/profile");
+        assertThat(webDriver.findElement(By.cssSelector("h1")).getText()).contains("Account Settings");
+        assertThat(webDriver.getPageSource()).contains(userDefaultEmail);
+
+        webDriver.get(zonePathUrl(ZONE1) + "/profile");
+        assertThat(webDriver.findElement(By.cssSelector("h1")).getText()).contains("Account Settings");
+        assertThat(webDriver.getPageSource()).contains(userZone1Email);
+
+        webDriver.get(zonePathUrl(ZONE2) + "/profile");
+        assertThat(webDriver.findElement(By.cssSelector("h1")).getText()).contains("Account Settings");
+        assertThat(webDriver.getPageSource()).contains(userZone2Email);
     }
 
     @Test
