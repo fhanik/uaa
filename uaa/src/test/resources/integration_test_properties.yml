@@ -1,5 +1,5 @@
 servlet:
-  session-store: database
+  session-store: memory
   session-cookie:
     encode-base64: true
 

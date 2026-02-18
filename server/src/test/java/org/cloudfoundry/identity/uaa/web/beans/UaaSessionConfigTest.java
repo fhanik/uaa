@@ -54,15 +54,23 @@ class UaaSessionConfigTest {
     }
 
     @Test
+    void whenServletIsConfigured() {
+        when(mockEnvironment.getProperty("servlet.session-store", "memory")).thenReturn("servlet");
+
+        assertThat(new UaaMemorySessionConfig.MemoryConfigured().matches(mockConditionContext, null)).isFalse();
+        assertThat(new UaaJdbcSessionConfig.DatabaseConfigured().matches(mockConditionContext, null)).isFalse();
+    }
+
+    @Test
     void whenFoobarIsConfigured() {
         when(mockEnvironment.getProperty("servlet.session-store", "memory")).thenReturn("foobar");
 
         assertThatThrownBy(() -> new UaaMemorySessionConfig.MemoryConfigured().matches(mockConditionContext, null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("foobar is not a valid argument for servlet.session-store. Please choose memory or database.");
+                .hasMessage("foobar is not a valid argument for servlet.session-store. Please choose memory, database or servlet.");
         assertThatThrownBy(() -> new UaaJdbcSessionConfig.DatabaseConfigured().matches(mockConditionContext, null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("foobar is not a valid argument for servlet.session-store. Please choose memory or database.");
+                .hasMessage("foobar is not a valid argument for servlet.session-store. Please choose memory, database or servlet.");
     }
 
     @Test

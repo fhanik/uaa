@@ -1,8 +1,9 @@
+require_https: false
+
 servlet:
-  session-store: database
+  session-store: servlet
   session-cookie:
     encode-base64: true
-
 
 issuer:
   uri: http://localhost:8080/uaa
@@ -123,7 +124,7 @@ ratelimit:
       pathSelectors:
         - "equals:/info"
     - name: SCIM
-      withCallerCredentialsID: 500r/s
+      withCallerCredentialsID: 5000r/s
       pathSelectors:
         - "startsWith:/Users"
         - "startsWith:/Groups"

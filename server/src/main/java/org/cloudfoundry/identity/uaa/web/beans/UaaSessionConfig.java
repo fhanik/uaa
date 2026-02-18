@@ -10,20 +10,25 @@ public class UaaSessionConfig {
     private static final String SERVLET_SESSION_STORE = "servlet.session-store";
     static final String DATABASE_SESSION_STORE_TYPE = "database";
     static final String MEMORY_SESSION_STORE_TYPE = "memory";
+    /** Use container default session (no Spring Session). Used for tests so MockHttpSession is used as-is. */
+    static final String SERVLET_CONTAINER_SESSION_STORE_TYPE = "servlet";
 
     static String getSessionStore(final Environment environment) {
         return environment.getProperty(SERVLET_SESSION_STORE, MEMORY_SESSION_STORE_TYPE);
     }
 
     static void validateSessionStore(String sessionStore) {
-        if (DATABASE_SESSION_STORE_TYPE.equals(sessionStore) || MEMORY_SESSION_STORE_TYPE.equals(sessionStore)) {
+        if (DATABASE_SESSION_STORE_TYPE.equals(sessionStore)
+                || MEMORY_SESSION_STORE_TYPE.equals(sessionStore)
+                || SERVLET_CONTAINER_SESSION_STORE_TYPE.equals(sessionStore)) {
             return;
         }
-        throw new IllegalArgumentException("%s is not a valid argument for %s. Please choose %s or %s.".formatted(
+        throw new IllegalArgumentException("%s is not a valid argument for %s. Please choose %s, %s or %s.".formatted(
                 sessionStore,
                 SERVLET_SESSION_STORE,
                 MEMORY_SESSION_STORE_TYPE,
-                DATABASE_SESSION_STORE_TYPE));
+                DATABASE_SESSION_STORE_TYPE,
+                SERVLET_CONTAINER_SESSION_STORE_TYPE));
     }
 
     @Bean

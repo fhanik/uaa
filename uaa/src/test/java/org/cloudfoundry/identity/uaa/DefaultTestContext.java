@@ -8,6 +8,7 @@ import org.cloudfoundry.identity.uaa.impl.config.YamlServletProfileInitializer;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.zone.ZonePathContextRewritingFilter;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
@@ -45,7 +46,8 @@ import static org.springframework.security.config.BeanIds.SPRING_SECURITY_FILTER
         properties = {
                 "spring.main.allow-bean-definition-overriding=true",
                 "spring.main.allow-circular-references=true",
-                "logging.level.org.springframework.security=TRACE"
+                "logging.level.org.springframework.security=TRACE",
+                "servlet.session-store=servlet"
         },
         classes = {
                 UaaBootConfiguration.class,
@@ -73,6 +75,7 @@ class TestPropertyInitializer implements ApplicationContextInitializer<Configura
     }
 }
 
+
 class TestClientAndMockMvcTestConfig {
     @Bean
     public MockMvc mockMvc(
@@ -82,8 +85,7 @@ class TestClientAndMockMvcTestConfig {
     ) {
         return MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilter(zonePathFilterRegistration.getFilter())
-                .addFilter(securityFilterChain)
-                .build();
+                .addFilter(securityFilterChain).build();
     }
 
     @Bean

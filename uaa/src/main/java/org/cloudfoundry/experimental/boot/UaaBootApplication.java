@@ -3,6 +3,7 @@ package org.cloudfoundry.experimental.boot;
 import org.cloudfoundry.identity.uaa.UaaApplicationConfiguration;
 import org.cloudfoundry.identity.uaa.UaaStatsdConfiguration;
 import org.cloudfoundry.identity.uaa.impl.config.YamlServletProfileInitializer;
+import org.cloudfoundry.identity.uaa.session.SessionCookieSecureFromRequireHttpsInitializer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Import;
@@ -45,7 +46,9 @@ public class UaaBootApplication {
 
         //start the application
         SpringApplication application = new SpringApplication(UaaBootApplication.class);
-        application.addInitializers(new YamlServletProfileInitializer());
+        application.addInitializers(
+                new YamlServletProfileInitializer(),
+                new SessionCookieSecureFromRequireHttpsInitializer());
         application.run(args);
     }
 }

@@ -136,8 +136,9 @@ public class TestUtils {
         IdentityZoneHolder.clear();
 
         if (applicationContext == null) {
-            IdentityZoneHolder.setProvisioning(null);
-            IdentityZoneHolder.setSamlKeyManagerFactory(null);
+            // Do not set provisioning/samlKeyManagerFactory to null; that would pollute
+            // subsequent tests (e.g. PollutionPreventionExtension calling restoreToDefaults(null)
+            // before context is ready). Only clear the thread local.
             return;
         }
 
