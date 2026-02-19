@@ -135,6 +135,18 @@ public final class MockMvcUtils {
         throw new java.lang.UnsupportedOperationException("This is a utility class and cannot be instantiated");
     }
 
+    public static MockHttpSession newZoneAwareMockHttpSession() {
+        return new ZoneAwareMockHttpSession();
+    }
+
+    public static MockHttpSession newZoneAwareMockHttpSession(String contextPath) {
+        return new ZoneAwareMockHttpSession(contextPath);
+    }
+
+    public static MockHttpSession newZoneAwareMockHttpSession(ZoneResolutionMode mode, String subdomain) {
+        return new ZoneAwareMockHttpSession(mode, subdomain);
+    }
+
     private static final String SIMPLESAMLPHP_UAA_ACCEPTANCE = "http://simplesamlphp.uaa-acceptance.cf-app.com";
 
     public static final String IDP_META_DATA =
@@ -200,7 +212,7 @@ public final class MockMvcUtils {
     }
 
     public static MockHttpSession getSavedRequestSession() {
-        MockHttpSession session = new MockHttpSession();
+        MockHttpSession session = newZoneAwareMockHttpSession();
         SavedRequest savedRequest = new MockSavedRequest();
         SessionUtils.setSavedRequestSession(session, savedRequest);
         return session;
@@ -976,7 +988,7 @@ public final class MockMvcUtils {
         assertThat(auth.isAuthenticated()).isTrue();
 
         SecurityContextHolder.getContext().setAuthentication(auth);
-        MockHttpSession session = new MockHttpSession();
+        MockHttpSession session = newZoneAwareMockHttpSession();
         session.setAttribute(
                 HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
                 new MockSecurityContext(auth)

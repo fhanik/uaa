@@ -3,6 +3,7 @@ package org.cloudfoundry.identity.uaa.zone;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 
 @Configuration
 public class ZonePathContextRewritingFilterConfiguration {
@@ -18,6 +19,18 @@ public class ZonePathContextRewritingFilterConfiguration {
         FilterRegistrationBean<ZonePathContextRewritingFilter> bean = new FilterRegistrationBean<>(filter);
         bean.addUrlPatterns("/*");
         bean.setOrder(org.springframework.core.Ordered.HIGHEST_PRECEDENCE + 50); // before Spring Security (default -100)
+        return bean;
+    }
+
+    /**
+     * Registers ZoneContextPathSessionFilter to run exactly after ZonePathContextRewritingFilter (order 50).
+     */
+    @Bean(ZoneContextPathSessionFilter.BEAN_NAME)
+    FilterRegistrationBean<ZoneContextPathSessionFilter> zoneContextPathSessionFilter() {
+        ZoneContextPathSessionFilter filter = new ZoneContextPathSessionFilter();
+        FilterRegistrationBean<ZoneContextPathSessionFilter> bean = new FilterRegistrationBean<>(filter);
+        bean.addUrlPatterns("/*");
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE + 51);
         return bean;
     }
 }
