@@ -62,6 +62,9 @@ import org.cloudfoundry.identity.uaa.zone.IdentityZoneSwitchingFilter;
 import org.cloudfoundry.identity.uaa.zone.Links;
 import org.cloudfoundry.identity.uaa.zone.MultitenancyFixture;
 import org.cloudfoundry.identity.uaa.zone.MultitenantJdbcClientDetailsService;
+import org.cloudfoundry.identity.uaa.zone.ZoneContextPathSessionRequestWrapper;
+import org.cloudfoundry.identity.uaa.zone.ZonePathHttpSession;
+import jakarta.servlet.http.HttpSession;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.ListableBeanFactory;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -135,16 +138,45 @@ public final class MockMvcUtils {
         throw new java.lang.UnsupportedOperationException("This is a utility class and cannot be instantiated");
     }
 
-    public static MockHttpSession newZoneAwareMockHttpSession() {
-        return new ZoneAwareMockHttpSession();
+    /**
+     * Returns the {@link ZonePathHttpSession} (sub-session view) for the given context path
+     * from a container session. Use after a request to read/write attributes that the
+     * filter stored inside the sub-session map.
+     *
+     * @param contextPath e.g. "" for default, "/uaa", or "/z/myzone"
+     */
+    public static HttpSession getZoneSession(HttpSession containerSession, String contextPath) {
+        if (containerSession == null) {
+            return null;
+        }
+        String key = (contextPath != null) ? contextPath : "";
+        String attributeName = ZoneContextPathSessionRequestWrapper.attributeNameForContextPath(key);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> attributes = (Map<String, Object>) containerSession.getAttribute(attributeName);
+        if (attributes == null) {
+            attributes = new java.util.concurrent.ConcurrentHashMap<>();
+            containerSession.setAttribute(attributeName, attributes);
+        }
+        return new ZonePathHttpSession(containerSession, key, attributes, attributeName);
     }
 
-    public static MockHttpSession newZoneAwareMockHttpSession(String contextPath) {
-        return new ZoneAwareMockHttpSession(contextPath);
+    /**
+     * Returns the default sub-session (empty context path) from a container session.
+     */
+    public static HttpSession getZoneSession(HttpSession containerSession) {
+        return getZoneSession(containerSession, "");
     }
 
-    public static MockHttpSession newZoneAwareMockHttpSession(ZoneResolutionMode mode, String subdomain) {
-        return new ZoneAwareMockHttpSession(mode, subdomain);
+    /**
+     * Returns the sub-session for the context path implied by the given resolution mode and subdomain.
+     * For {@code ZONE_PATH} mode: context path is {@code /z/{subdomain}}.
+     * For {@code SUBDOMAIN} mode (or null subdomain): context path is {@code ""}.
+     */
+    public static HttpSession getZoneSession(HttpSession containerSession, ZoneResolutionMode mode, String subdomain) {
+        String contextPath = (mode == ZoneResolutionMode.ZONE_PATH && subdomain != null && !subdomain.isEmpty())
+                ? "/z/" + subdomain
+                : "";
+        return getZoneSession(containerSession, contextPath);
     }
 
     private static final String SIMPLESAMLPHP_UAA_ACCEPTANCE = "http://simplesamlphp.uaa-acceptance.cf-app.com";
@@ -212,9 +244,16 @@ public final class MockMvcUtils {
     }
 
     public static MockHttpSession getSavedRequestSession() {
-        MockHttpSession session = newZoneAwareMockHttpSession();
+        MockHttpSession session = new MockHttpSession();
         SavedRequest savedRequest = new MockSavedRequest();
-        SessionUtils.setSavedRequestSession(session, savedRequest);
+        SessionUtils.setSavedRequestSession(getZoneSession(session), savedRequest);
+        return session;
+    }
+
+    public static MockHttpSession getSavedRequestSession(ZoneResolutionMode mode, String subdomain) {
+        MockHttpSession session = new MockHttpSession();
+        SavedRequest savedRequest = new MockSavedRequest();
+        SessionUtils.setSavedRequestSession(getZoneSession(session, mode, subdomain), savedRequest);
         return session;
     }
 
@@ -988,8 +1027,8 @@ public final class MockMvcUtils {
         assertThat(auth.isAuthenticated()).isTrue();
 
         SecurityContextHolder.getContext().setAuthentication(auth);
-        MockHttpSession session = newZoneAwareMockHttpSession();
-        session.setAttribute(
+        MockHttpSession session = new MockHttpSession();
+        getZoneSession(session).setAttribute(
                 HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
                 new MockSecurityContext(auth)
         );

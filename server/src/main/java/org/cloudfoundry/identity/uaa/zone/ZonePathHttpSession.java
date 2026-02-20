@@ -10,8 +10,8 @@ import java.util.Collections;
 /**
  * HttpSession view scoped to a context path. Attributes are stored in a map held
  * in the container session under one attribute per context path. {@link #invalidate()}
- * only removes this context path's attribute from the container session; it does not
- * invalidate the container session.
+ * clears this context path's attributes and removes the attribute from the container
+ * session; it does not invalidate the container session itself.
  * <p>
  * Each subsession has a unique {@link #getId()} so that session repositories and
  * the application can distinguish subsessions: container session ID plus the context
