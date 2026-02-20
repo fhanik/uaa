@@ -47,7 +47,6 @@ import static org.springframework.http.HttpMethod.POST;
  */
 @SpringJUnitConfig(classes = DefaultIntegrationTestConfig.class)
 @ExtendWith(ScreenshotOnFailExtension.class)
-@Disabled("not yet implemented")
 class ZoneSessionPathsIT {
 
     private static final String PASSWORD = "secr3T";

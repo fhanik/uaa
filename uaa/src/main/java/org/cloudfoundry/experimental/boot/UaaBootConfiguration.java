@@ -12,6 +12,7 @@ import org.springframework.boot.web.servlet.ServletContextInitializer;
 import org.springframework.boot.web.servlet.server.ConfigurableServletWebServerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
 import org.springframework.security.web.session.HttpSessionEventPublisher;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -42,6 +43,7 @@ public class UaaBootConfiguration implements ServletContextInitializer, WebMvcCo
         filter.setIgnoreRegistrationFailure(true);
         filter.setDispatcherTypes(DispatcherType.REQUEST, DispatcherType.ERROR);
         filter.addUrlPatterns("/*");
+        filter.setOrder(Ordered.HIGHEST_PRECEDENCE + 52);
         return filter;
     }
 
