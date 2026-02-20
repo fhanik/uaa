@@ -73,7 +73,7 @@ public class DefaultIntegrationTestConfig {
         ChromeOptions options = new ChromeOptions();
         options.addArguments(
                 // Comment the following line to run selenium test browser in Headed Mode
-                "--headless=new", // Use new headless mode (more stable)
+                //"--headless=new", // Use new headless mode (more stable)
                 "--guest", //attempt to disable password checkups that disrupt the flow
                 "--disable-web-security",
                 "--ignore-certificate-errors",
@@ -108,7 +108,7 @@ public class DefaultIntegrationTestConfig {
                 "--disable-infobars"
         );
         options.setAcceptInsecureCerts(true);
-        
+
         // Set page load strategy to 'normal' to ensure proper page load detection
         options.setPageLoadStrategy(org.openqa.selenium.PageLoadStrategy.NORMAL);
 

@@ -1,10 +1,12 @@
 package org.cloudfoundry.identity.uaa;
 
+import jakarta.servlet.Filter;
 import jakarta.servlet.RequestDispatcher;
 import org.cloudfoundry.experimental.boot.UaaBootConfiguration;
 import org.cloudfoundry.identity.uaa.db.beans.JdbcUrlCustomizer;
 import org.cloudfoundry.identity.uaa.extensions.PollutionPreventionExtension;
 import org.cloudfoundry.identity.uaa.impl.config.YamlServletProfileInitializer;
+import org.cloudfoundry.identity.uaa.mock.util.SpringSessionMockMvcConfigurer;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.zone.ZoneContextPathSessionFilter;
 import org.cloudfoundry.identity.uaa.zone.ZonePathContextRewritingFilter;
@@ -14,6 +16,7 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration;
 import org.springframework.boot.autoconfigure.session.SessionAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.lang.NonNull;
@@ -46,7 +49,8 @@ import static org.springframework.security.config.BeanIds.SPRING_SECURITY_FILTER
         properties = {
                 "spring.main.allow-bean-definition-overriding=true",
                 "spring.main.allow-circular-references=true",
-                "logging.level.org.springframework.security=TRACE"
+                "logging.level.org.springframework.security=TRACE",
+                "servlet.session-store=memory"
         },
         classes = {
                 UaaBootConfiguration.class,
@@ -79,13 +83,16 @@ class TestClientAndMockMvcTestConfig {
     public MockMvc mockMvc(
             WebApplicationContext webApplicationContext,
             @Qualifier(SPRING_SECURITY_FILTER_CHAIN) FilterChainProxy securityFilterChain,
-            @Qualifier(ZonePathContextRewritingFilter.BEAN_NAME) org.springframework.boot.web.servlet.FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathFilterRegistration,
-            @Qualifier(ZoneContextPathSessionFilter.BEAN_NAME) org.springframework.boot.web.servlet.FilterRegistrationBean<ZoneContextPathSessionFilter> zoneContextPathSessionFilterRegistration
+            @Qualifier(ZonePathContextRewritingFilter.BEAN_NAME) FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathFilterRegistration,
+            @Qualifier("sessionRepositoryFilterRegistration") FilterRegistrationBean<Filter> sessionRepositoryFilterRegistration,
+            @Qualifier(ZoneContextPathSessionFilter.BEAN_NAME) FilterRegistrationBean<ZoneContextPathSessionFilter> zoneContextPathSessionFilterRegistration
     ) {
         return MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilter(zonePathFilterRegistration.getFilter())
+                .addFilter(sessionRepositoryFilterRegistration.getFilter())
                 .addFilter(zoneContextPathSessionFilterRegistration.getFilter())
                 .addFilter(securityFilterChain)
+                .apply(new SpringSessionMockMvcConfigurer())
                 .build();
     }
 

@@ -1,6 +1,8 @@
 package org.cloudfoundry.identity.uaa.login;
 
+import jakarta.servlet.Filter;
 import org.bouncycastle.jcajce.provider.BouncyCastleFipsProvider;
+import org.cloudfoundry.identity.uaa.mock.util.SpringSessionMockMvcConfigurer;
 import org.cloudfoundry.identity.uaa.authentication.UaaAuthentication;
 import org.cloudfoundry.identity.uaa.authentication.UaaPrincipal;
 import org.cloudfoundry.identity.uaa.client.UaaClientDetails;
@@ -165,6 +167,10 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
     @Autowired
     FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathFilterRegistration;
 
+    @Qualifier("sessionRepositoryFilterRegistration")
+    @Autowired
+    FilterRegistrationBean<Filter> sessionRepositoryFilterRegistration;
+
     @Qualifier(ZoneContextPathSessionFilter.BEAN_NAME)
     @Autowired
     FilterRegistrationBean<ZoneContextPathSessionFilter> zoneContextPathSessionFilterRegistration;
@@ -185,8 +191,10 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
     void setUpContext(ManualRestDocumentation manualRestDocumentation) {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilter(zonePathFilterRegistration.getFilter())
+                .addFilter(sessionRepositoryFilterRegistration.getFilter())
                 .addFilter(zoneContextPathSessionFilterRegistration.getFilter())
                 .addFilter(securityFilterChain)
+                .apply(new SpringSessionMockMvcConfigurer())
                 .apply(documentationConfiguration(manualRestDocumentation)
                         .uris().withPort(80)
                         .and()

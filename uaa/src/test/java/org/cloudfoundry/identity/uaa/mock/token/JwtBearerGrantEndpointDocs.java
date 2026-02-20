@@ -15,6 +15,8 @@
 
 package org.cloudfoundry.identity.uaa.mock.token;
 
+import jakarta.servlet.Filter;
+import org.cloudfoundry.identity.uaa.mock.util.SpringSessionMockMvcConfigurer;
 import org.cloudfoundry.identity.uaa.test.JUnitRestDocumentationExtension;
 import org.cloudfoundry.identity.uaa.test.TestClient;
 import org.cloudfoundry.identity.uaa.zone.IdentityZone;
@@ -60,6 +62,10 @@ class JwtBearerGrantEndpointDocs extends JwtBearerGrantMockMvcTests {
     @Autowired
     FilterRegistrationBean<ZonePathContextRewritingFilter> zonePathFilterRegistration;
 
+    @Qualifier("sessionRepositoryFilterRegistration")
+    @Autowired
+    FilterRegistrationBean<Filter> sessionRepositoryFilterRegistration;
+
     @Qualifier(ZoneContextPathSessionFilter.BEAN_NAME)
     @Autowired
     FilterRegistrationBean<ZoneContextPathSessionFilter> zoneContextPathSessionFilterRegistration;
@@ -68,8 +74,10 @@ class JwtBearerGrantEndpointDocs extends JwtBearerGrantMockMvcTests {
     void setUpContext(ManualRestDocumentation manualRestDocumentation) {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext)
                 .addFilter(zonePathFilterRegistration.getFilter())
+                .addFilter(sessionRepositoryFilterRegistration.getFilter())
                 .addFilter(zoneContextPathSessionFilterRegistration.getFilter())
                 .addFilter(securityFilterChain)
+                .apply(new SpringSessionMockMvcConfigurer())
                 .apply(documentationConfiguration(manualRestDocumentation)
                         .uris().withPort(80)
                         .and()
