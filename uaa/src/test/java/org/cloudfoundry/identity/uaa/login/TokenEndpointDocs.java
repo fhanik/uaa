@@ -120,6 +120,7 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
     private final ParameterDescriptor clientSecretParameter = parameterWithName("client_secret").optional(null).type(STRING).description("The [secret passphrase configured](#change-secret) for the OAuth client. Optional if it is passed as part of the Basic Authorization header or if client_assertion is sent as part of private_key_jwt authentication.");
     private final ParameterDescriptor opaqueFormatParameter = parameterWithName(REQUEST_TOKEN_FORMAT).optional("jwt").type(STRING).description("Can be set to `" + OPAQUE.getStringValue() + "` to retrieve an opaque token or to `" + JWT.getStringValue() + "` to retrieve a JWT token. Please refer to the Revoke Tokens endpoint doc for information about the revocability of opaque vs. jwt tokens.");
     private final ParameterDescriptor scopeParameter = parameterWithName(SCOPE).optional(null).type(STRING).description("The list of scopes requested for the token. Use when you wish to reduce the number of scopes the token will have.");
+    private final ParameterDescriptor saml2BearerAssertionParameter = parameterWithName("assertion").required().type(STRING).description("An XML based SAML 2.0 bearer assertion, which is Base64URl encoded.");
     private final ParameterDescriptor loginHintParameter = parameterWithName("login_hint").optional(null).type(STRING).description("<small><mark>UAA 75.5.0</mark></small> Indicates the identity provider to be used. The passed string has to be a URL-Encoded JSON Object, containing the field `origin` with value as `origin_key` of an identity provider. Note that this identity provider must support the grant type `password`.");
     private final ParameterDescriptor codeVerifier = parameterWithName(PkceValidationService.CODE_VERIFIER).description("<small><mark>UAA 75.5.0</mark></small> [PKCE](https://tools.ietf.org/html/rfc7636) Code Verifier. A `code_verifier` parameter must be provided if a `code_challenge` parameter was present in the previous call to `/oauth/authorize`. The `code_verifier` must match the used `code_challenge` (according to the selected `code_challenge_method`)").attributes(key("constraints").value("Optional"), key("type").value(STRING));
 
@@ -663,12 +664,11 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .param("assertion", ctx.encodedSamlAssertion())
                 .param("scope", "openid");
 
-        final ParameterDescriptor assertionFormatParameter = parameterWithName("assertion").required().type(STRING).description("An XML based SAML 2.0 bearer assertion, which is Base64URl encoded.");
         Snippet formParameters = formParameters(
                 clientIdParameter.description("The client ID of the receiving client, this client must have `urn:ietf:params:oauth:grant-type:saml2-bearer` grant type"),
                 clientSecretParameter,
                 grantTypeParameter.description("The type of token grant requested, in this case `" + GRANT_TYPE_SAML2_BEARER + "`"),
-                assertionFormatParameter,
+                saml2BearerAssertionParameter,
                 scopeParameter
         );
 
@@ -711,12 +711,11 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .param("assertion", ctx.encodedSamlAssertion())
                 .param("scope", "openid");
 
-        final ParameterDescriptor assertionFormatParameter = parameterWithName("assertion").required().type(STRING).description("An XML based SAML 2.0 bearer assertion, which is Base64URl encoded.");
         Snippet requestHeaders = requestHeaders(CLIENT_BASIC_AUTH_HEADER);
         Snippet formParameters = formParameters(
                 clientIdParameter.description("The client ID of the receiving client, this client must have `urn:ietf:params:oauth:grant-type:saml2-bearer` grant type"),
                 grantTypeParameter.description("The type of token grant requested, in this case `" + GRANT_TYPE_SAML2_BEARER + "`"),
-                assertionFormatParameter,
+                saml2BearerAssertionParameter,
                 scopeParameter
         );
 
@@ -758,13 +757,13 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .param("assertion", ctx.encodedSamlAssertion())
                 .param("scope", "openid");
 
-        final ParameterDescriptor assertionFormatParameter = parameterWithName("assertion").required().type(STRING).description("An XML based SAML 2.0 bearer assertion, which is Base64URl encoded.");
+
         Snippet formParameters = formParameters(
                 clientIdParameter.description("The client ID of the receiving client, this client must have `urn:ietf:params:oauth:grant-type:saml2-bearer` grant type"),
                 clientAssertion,
                 clientAssertionType,
                 grantTypeParameter.description("The type of token grant requested, in this case `" + GRANT_TYPE_SAML2_BEARER + "`"),
-                assertionFormatParameter,
+                saml2BearerAssertionParameter,
                 scopeParameter
         );
 
@@ -805,12 +804,12 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .param("assertion", ctx.encodedSamlAssertion())
                 .param("scope", "openid");
 
-        final ParameterDescriptor assertionFormatParameter = parameterWithName("assertion").required().type(STRING).description("An XML based SAML 2.0 bearer assertion, which is Base64URl encoded.");
+
         Snippet formParameters = formParameters(
                 clientIdParameter.description("The client ID of the receiving client, this client must have `urn:ietf:params:oauth:grant-type:saml2-bearer` grant type"),
                 clientSecretParameter,
                 grantTypeParameter.description("The type of token grant requested, in this case `" + GRANT_TYPE_SAML2_BEARER + "`"),
-                assertionFormatParameter,
+                saml2BearerAssertionParameter,
                 scopeParameter
         );
 
@@ -853,12 +852,12 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .param("assertion", ctx.encodedSamlAssertion())
                 .param("scope", "openid");
 
-        final ParameterDescriptor assertionFormatParameter = parameterWithName("assertion").required().type(STRING).description("An XML based SAML 2.0 bearer assertion, which is Base64URl encoded.");
+
         Snippet requestHeaders = requestHeaders(CLIENT_BASIC_AUTH_HEADER);
         Snippet formParameters = formParameters(
                 clientIdParameter.description("The client ID of the receiving client, this client must have `urn:ietf:params:oauth:grant-type:saml2-bearer` grant type"),
                 grantTypeParameter.description("The type of token grant requested, in this case `" + GRANT_TYPE_SAML2_BEARER + "`"),
-                assertionFormatParameter,
+                saml2BearerAssertionParameter,
                 scopeParameter
         );
 
@@ -900,13 +899,13 @@ class TokenEndpointDocs extends AbstractTokenMockMvcTests {
                 .param("assertion", ctx.encodedSamlAssertion())
                 .param("scope", "openid");
 
-        final ParameterDescriptor assertionFormatParameter = parameterWithName("assertion").required().type(STRING).description("An XML based SAML 2.0 bearer assertion, which is Base64URl encoded.");
+
         Snippet formParameters = formParameters(
                 clientIdParameter.description("The client ID of the receiving client, this client must have `urn:ietf:params:oauth:grant-type:saml2-bearer` grant type"),
                 clientAssertion,
                 clientAssertionType,
                 grantTypeParameter.description("The type of token grant requested, in this case `" + GRANT_TYPE_SAML2_BEARER + "`"),
-                assertionFormatParameter,
+                saml2BearerAssertionParameter,
                 scopeParameter
         );
 
