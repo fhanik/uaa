@@ -37,6 +37,12 @@ import static org.springframework.util.StringUtils.hasText;
  */
 public class UaaAuthenticationDetails implements Serializable {
 
+    /**
+     * The value the JVM computed for this class before it was pinned. Instances are persisted in
+     * Spring Session JDBC rows, so changing it makes existing sessions undeserializable.
+     */
+    private static final long serialVersionUID = 4782409396359737075L;
+
     public static final String ADD_NEW = "add_new";
 
     public static final UaaAuthenticationDetails UNKNOWN = new UaaAuthenticationDetails();

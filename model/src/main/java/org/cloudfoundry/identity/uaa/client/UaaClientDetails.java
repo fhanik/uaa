@@ -315,27 +315,21 @@ public class UaaClientDetails implements ClientDetails {
 
     public void setTlsClientAuthConfiguration(TlsClientAuthConfiguration tlsClientAuthConfiguration) {
         this.tlsClientAuthConfiguration = tlsClientAuthConfiguration;
-        if (tlsClientAuthConfiguration != null) {
-            this.additionalInformation.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CA,
-                    tlsClientAuthConfiguration.getTrustedCaPem());
-            putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CLAIM_MAPPINGS,
-                    tlsClientAuthConfiguration.getClaimMappings());
-            putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SUB_TEMPLATE,
-                    tlsClientAuthConfiguration.getSubTemplate());
-            putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_AUD_TEMPLATES,
-                    tlsClientAuthConfiguration.getAudTemplates());
-            putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_TRUSTED_PROXY_CA,
-                    tlsClientAuthConfiguration.getTrustedProxyCaPem());
-            putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_REQUIRED_CLAIMS,
-                    tlsClientAuthConfiguration.getRequiredClaims());
-        } else {
-            this.additionalInformation.remove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CA);
-            this.additionalInformation.remove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CLAIM_MAPPINGS);
-            this.additionalInformation.remove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SUB_TEMPLATE);
-            this.additionalInformation.remove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_AUD_TEMPLATES);
-            this.additionalInformation.remove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_TRUSTED_PROXY_CA);
-            this.additionalInformation.remove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_REQUIRED_CLAIMS);
-        }
+        TlsClientAuthConfiguration c = tlsClientAuthConfiguration == null
+                ? new TlsClientAuthConfiguration()
+                : tlsClientAuthConfiguration;
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CA, c.getTrustedCaPem());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CLAIM_MAPPINGS, c.getClaimMappings());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SUB_TEMPLATE, c.getSubTemplate());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_AUD_TEMPLATES, c.getAudTemplates());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_TRUSTED_PROXY_CA, c.getTrustedProxyCaPem());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_REQUIRED_CLAIMS, c.getRequiredClaims());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_ALLOWED_RESOURCES, c.getAllowedResources());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SUBJECT_DN, c.getSubjectDn());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_DNS, c.getSanDns());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_URI, c.getSanUri());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_IP, c.getSanIp());
+        putOrRemove(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_EMAIL, c.getSanEmail());
     }
 
     private void putOrRemove(String key, Object value) {

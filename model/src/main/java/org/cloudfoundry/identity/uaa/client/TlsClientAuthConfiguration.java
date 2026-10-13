@@ -3,6 +3,8 @@ package org.cloudfoundry.identity.uaa.client;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.cloudfoundry.identity.uaa.util.JsonUtils;
+import tools.jackson.core.type.TypeReference;
 
 import java.util.List;
 import java.util.Map;
@@ -286,6 +288,50 @@ public class TlsClientAuthConfiguration {
 
     public static boolean isConfigured(TlsClientAuthConfiguration config) {
         return config != null && config.getTrustedCaPem() != null && !config.getTrustedCaPem().isBlank();
+    }
+
+    /**
+     * Reads the flat {@code tls-client-auth-*} / {@code tls_client_auth_*} keys from a client's
+     * {@code additionalInformation}, which is where JDBC-loaded and bootstrapped clients carry them.
+     * List- and map-valued keys may be stored either as a JSON string or as an already-parsed value.
+     *
+     * @return {@code null} when {@code info} is {@code null} or has no String {@link #TLS_CLIENT_AUTH_CA}
+     * @throws IllegalArgumentException when a value is present but cannot be read
+     */
+    public static TlsClientAuthConfiguration fromAdditionalInformation(Map<String, Object> info) {
+        if (info == null || !(info.get(TLS_CLIENT_AUTH_CA) instanceof String pem)) {
+            return null;
+        }
+        try {
+            TlsClientAuthConfiguration cfg = new TlsClientAuthConfiguration(pem,
+                    readJson(info.get(TLS_CLIENT_AUTH_CLAIM_MAPPINGS), new TypeReference<List<ClaimMapping>>() {}));
+            cfg.setSubTemplate(nonBlankString(info, TLS_CLIENT_AUTH_SUB_TEMPLATE));
+            cfg.setAudTemplates(readJson(info.get(TLS_CLIENT_AUTH_AUD_TEMPLATES), new TypeReference<List<String>>() {}));
+            cfg.setTrustedProxyCaPem(nonBlankString(info, TLS_CLIENT_AUTH_TRUSTED_PROXY_CA));
+            cfg.setRequiredClaims(readJson(info.get(TLS_CLIENT_AUTH_REQUIRED_CLAIMS),
+                    new TypeReference<Map<String, String>>() {}));
+            cfg.setAllowedResources(readJson(info.get(TLS_CLIENT_AUTH_ALLOWED_RESOURCES),
+                    new TypeReference<List<String>>() {}));
+            cfg.setSubjectDn(nonBlankString(info, TLS_CLIENT_AUTH_SUBJECT_DN));
+            cfg.setSanDns(nonBlankString(info, TLS_CLIENT_AUTH_SAN_DNS));
+            cfg.setSanUri(nonBlankString(info, TLS_CLIENT_AUTH_SAN_URI));
+            cfg.setSanIp(nonBlankString(info, TLS_CLIENT_AUTH_SAN_IP));
+            cfg.setSanEmail(nonBlankString(info, TLS_CLIENT_AUTH_SAN_EMAIL));
+            return cfg;
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("tls-client-auth configuration cannot be read", e);
+        }
+    }
+
+    private static <T> T readJson(Object raw, TypeReference<T> type) {
+        if (raw == null) {
+            return null;
+        }
+        return JsonUtils.readValue(raw instanceof String json ? json : JsonUtils.writeValueAsString(raw), type);
+    }
+
+    private static String nonBlankString(Map<String, Object> info, String key) {
+        return info.get(key) instanceof String value && !value.isBlank() ? value : null;
     }
 
 

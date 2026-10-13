@@ -3,10 +3,12 @@ package org.cloudfoundry.identity.uaa.client;
 import tools.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class TlsClientAuthConfigurationTest {
 
@@ -49,6 +51,55 @@ class TlsClientAuthConfigurationTest {
         assertThat(deserialized.getTrustedCaPem()).isEqualTo(EXAMPLE_CA);
         assertThat(deserialized.getClaimMappings()).hasSize(1);
         assertThat(deserialized.getClaimMappings().get(0).getClaim()).isEqualTo("app_guid");
+    }
+
+    @Test
+    void fromAdditionalInformation_readsJsonStringAndParsedValuesAlike() {
+        Map<String, Object> parsed = new HashMap<>();
+        parsed.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CA, EXAMPLE_CA);
+        parsed.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CLAIM_MAPPINGS,
+                List.of(Map.of("field", "subject_ou", "pattern", "^app:(.+)$", "claim", "app")));
+        parsed.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_AUD_TEMPLATES, List.of("aud-{app}"));
+        parsed.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_REQUIRED_CLAIMS, Map.of("app", "guid"));
+        parsed.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_ALLOWED_RESOURCES, List.of("https://rs.example.com"));
+        parsed.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SUB_TEMPLATE, "{app}");
+        parsed.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_DNS, "app.example.com");
+
+        Map<String, Object> asJsonStrings = new HashMap<>(parsed);
+        asJsonStrings.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CLAIM_MAPPINGS,
+                "[{\"field\":\"subject_ou\",\"pattern\":\"^app:(.+)$\",\"claim\":\"app\"}]");
+        asJsonStrings.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_AUD_TEMPLATES, "[\"aud-{app}\"]");
+        asJsonStrings.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_REQUIRED_CLAIMS, "{\"app\":\"guid\"}");
+        asJsonStrings.put(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_ALLOWED_RESOURCES, "[\"https://rs.example.com\"]");
+
+        TlsClientAuthConfiguration config = TlsClientAuthConfiguration.fromAdditionalInformation(parsed);
+
+        assertThat(config.getClaimMappings())
+                .containsExactly(new TlsClientAuthConfiguration.ClaimMapping("subject_ou", "^app:(.+)$", "app"));
+        assertThat(config.getAudTemplates()).containsExactly("aud-{app}");
+        assertThat(config.getRequiredClaims()).containsExactlyEntriesOf(Map.of("app", "guid"));
+        assertThat(config.getAllowedResources()).containsExactly("https://rs.example.com");
+        assertThat(config.getSubTemplate()).isEqualTo("{app}");
+        assertThat(config.configuredSubjectBindings()).containsExactly(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_DNS);
+        assertThat(TlsClientAuthConfiguration.fromAdditionalInformation(asJsonStrings)).isEqualTo(config);
+    }
+
+    @Test
+    void fromAdditionalInformation_returnsNullWithoutAStringCa() {
+        assertThat(TlsClientAuthConfiguration.fromAdditionalInformation(null)).isNull();
+        assertThat(TlsClientAuthConfiguration.fromAdditionalInformation(Map.of())).isNull();
+        assertThat(TlsClientAuthConfiguration.fromAdditionalInformation(
+                Map.of(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CA, Map.of("pem", EXAMPLE_CA)))).isNull();
+    }
+
+    @Test
+    void fromAdditionalInformation_rejectsUnreadableValues() {
+        Map<String, Object> info = Map.of(
+                TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CA, EXAMPLE_CA,
+                TlsClientAuthConfiguration.TLS_CLIENT_AUTH_ALLOWED_RESOURCES, "not json");
+
+        assertThatThrownBy(() -> TlsClientAuthConfiguration.fromAdditionalInformation(info))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

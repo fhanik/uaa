@@ -264,6 +264,24 @@ class UaaClientDetailsTest {
         }
 
         @Test
+        void setTlsClientAuthConfiguration_persistsEverySettingTheFlatReaderUnderstands() {
+            TlsClientAuthConfiguration config = new TlsClientAuthConfiguration(
+                    "trusted-ca", List.of(new TlsClientAuthConfiguration.ClaimMapping("subject_ou", "^app:(.+)$", "app")));
+            config.setSubTemplate("{app}");
+            config.setAudTemplates(List.of("aud-{app}"));
+            config.setTrustedProxyCaPem("trusted-proxy-ca");
+            config.setRequiredClaims(Map.of("app", "guid"));
+            config.setAllowedResources(List.of("https://rs.example.com"));
+            config.setSanUri("spiffe://example/app");
+
+            UaaClientDetails details = new UaaClientDetails();
+            details.setTlsClientAuthConfiguration(config);
+
+            assertThat(TlsClientAuthConfiguration.fromAdditionalInformation(details.getAdditionalInformation()))
+                    .isEqualTo(config);
+        }
+
+        @Test
         void autoApprove() {
             UaaClientDetails details = new UaaClientDetails();
             assertThat(details.getAutoApproveScopes()).isNull();

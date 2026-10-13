@@ -16,8 +16,8 @@ import java.io.IOException;
  * client authentication ({@code uaa.mtls-enabled}, false by default), it is exactly one path with
  * nothing served beneath it, and it accepts only POST.
  *
- * <p>The feature is otherwise gated asymmetrically: {@code mtlsTokenEndpointSecurity} is
- * {@code @ConditionalOnProperty}, but {@code UaaTokenEndpoint}'s {@code @RequestMapping} lists the
+ * <p>The feature is otherwise gated asymmetrically: {@code mtlsTokenEndpointSecurity} is gated by
+ * {@link MtlsEnabledCondition}, but {@code UaaTokenEndpoint}'s {@code @RequestMapping} lists the
  * path unconditionally. With the feature off, no OAuth filter chain has a {@code securityMatcher} for
  * it, so the request fell through to the catch-all {@code uiSecurity} chain -- form login, session,
  * CSRF -- and was answered by that chain's {@code CsrfFilter} with

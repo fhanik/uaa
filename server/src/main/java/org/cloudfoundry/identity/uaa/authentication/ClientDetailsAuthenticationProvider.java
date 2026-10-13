@@ -16,7 +16,6 @@ package org.cloudfoundry.identity.uaa.authentication;
 import org.cloudfoundry.identity.uaa.client.InvalidClientDetailsException;
 import org.cloudfoundry.identity.uaa.client.TlsClientAuthConfiguration;
 import org.cloudfoundry.identity.uaa.client.UaaClient;
-import org.cloudfoundry.identity.uaa.util.JsonUtils;
 import org.cloudfoundry.identity.uaa.oauth.jwt.JwtClientAuthentication;
 import org.cloudfoundry.identity.uaa.oauth.pkce.PkceValidationService;
 import org.cloudfoundry.identity.uaa.oauth.tls.TlsClientAuthSubjectMatcher;
@@ -35,11 +34,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
-import tools.jackson.core.type.TypeReference;
-
 import java.security.cert.X509Certificate;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -242,9 +238,6 @@ public class ClientDetailsAuthenticationProvider extends DaoAuthenticationProvid
      */
     static boolean isTlsClientAuthPath(Object uaaAuthenticationDetails) {
         UaaAuthenticationDetails details = getUaaAuthenticationDetails(uaaAuthenticationDetails);
-        if (details == null) {
-            return false;
-        }
         return RawPeerCertificateCaptureFilter.isMtlsTokenPath(details.getServletPath())
                 || RawPeerCertificateCaptureFilter.isMtlsTokenPath(details.getRequestPath());
     }
@@ -291,87 +284,16 @@ public class ClientDetailsAuthenticationProvider extends DaoAuthenticationProvid
         }
     }
 
-    /** A non-blank String value from the flat additionalInformation map, or {@code null}. */
-    private static String flatString(Map<String, Object> info, String key) {
-        return info.get(key) instanceof String value && !value.isBlank() ? value : null;
-    }
-
     static TlsClientAuthConfiguration getTlsClientAuthConfiguration(UaaClient uaaClient) {
-        Map<String, Object> info = uaaClient.getAdditionalInformation();
-        if (info == null) {
-            return null;
+        try {
+            return TlsClientAuthConfiguration.fromAdditionalInformation(uaaClient.getAdditionalInformation());
+        } catch (IllegalArgumentException e) {
+            // The client does set tls-client-auth-ca, so it is mTLS-only. Returning null here would make it an
+            // ordinary client that could authenticate with its client_secret and obtain an unbound token --
+            // the opposite of what its registration says. The registration validators reject configuration
+            // that cannot be read, so this only guards stored data that bypassed them.
+            throw new BadCredentialsException(
+                    "tls_client_auth: the client's tls-client-auth configuration cannot be read", e);
         }
-        Object rawConfig = info.get(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CA);
-        if (rawConfig instanceof String pem) {
-            try {
-                List<TlsClientAuthConfiguration.ClaimMapping> claimMappings = null;
-                Object rawMappings = info.get(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_CLAIM_MAPPINGS);
-                if (rawMappings instanceof String mappingsJson) {
-                    claimMappings = JsonUtils.readValue(mappingsJson,
-                            new TypeReference<List<TlsClientAuthConfiguration.ClaimMapping>>() {});
-                } else if (rawMappings instanceof List<?> mappingsList) {
-                    // Jackson may parse a JSON array directly as a List when additionalInformation
-                    // is deserialized from JDBC without a String-encoded wrapper.
-                    String mappingsJson = JsonUtils.writeValueAsString(mappingsList);
-                    claimMappings = JsonUtils.readValue(mappingsJson,
-                            new TypeReference<List<TlsClientAuthConfiguration.ClaimMapping>>() {});
-                }
-                String subTemplate = null;
-                Object rawSubTemplate = info.get(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SUB_TEMPLATE);
-                if (rawSubTemplate instanceof String st && !st.isBlank()) {
-                    subTemplate = st;
-                }
-
-                List<String> audTemplates = null;
-                Object rawAudTemplates = info.get(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_AUD_TEMPLATES);
-                if (rawAudTemplates instanceof String audJson) {
-                    audTemplates = JsonUtils.readValue(audJson, new TypeReference<List<String>>() {});
-                } else if (rawAudTemplates instanceof List<?> audList) {
-                    audTemplates = JsonUtils.readValue(
-                            JsonUtils.writeValueAsString(audList),
-                            new TypeReference<List<String>>() {});
-                }
-
-                String trustedProxyCaPem = null;
-                Object rawTrustedProxyCa = info.get(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_TRUSTED_PROXY_CA);
-                if (rawTrustedProxyCa instanceof String tpc && !tpc.isBlank()) {
-                    trustedProxyCaPem = tpc;
-                }
-
-                Map<String, String> requiredClaims = null;
-                Object rawRequiredClaims = info.get(TlsClientAuthConfiguration.TLS_CLIENT_AUTH_REQUIRED_CLAIMS);
-                if (rawRequiredClaims instanceof String requiredClaimsJson) {
-                    requiredClaims = JsonUtils.readValue(requiredClaimsJson,
-                            new TypeReference<Map<String, String>>() {});
-                } else if (rawRequiredClaims instanceof Map<?, ?> requiredClaimsMap) {
-                    requiredClaims = JsonUtils.readValue(
-                            JsonUtils.writeValueAsString(requiredClaimsMap),
-                            new TypeReference<Map<String, String>>() {});
-                }
-
-                TlsClientAuthConfiguration cfg = new TlsClientAuthConfiguration(pem, claimMappings);
-                cfg.setSubTemplate(subTemplate);
-                cfg.setAudTemplates(audTemplates);
-                cfg.setTrustedProxyCaPem(trustedProxyCaPem);
-                cfg.setRequiredClaims(requiredClaims);
-                // RFC 8705 2.1.2 subject binding. Read from the flat additionalInformation path so
-                // that clients registered through the BOSH oauth.clients bootstrap, which never
-                // goes through the admin API's typed model, are bound too.
-                cfg.setSubjectDn(flatString(info, TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SUBJECT_DN));
-                cfg.setSanDns(flatString(info, TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_DNS));
-                cfg.setSanUri(flatString(info, TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_URI));
-                cfg.setSanIp(flatString(info, TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_IP));
-                cfg.setSanEmail(flatString(info, TlsClientAuthConfiguration.TLS_CLIENT_AUTH_SAN_EMAIL));
-                return cfg;
-            } catch (Exception e) {
-                // The client does set tls-client-auth-ca, so it is mTLS-only. Returning null here would make it an
-                // ordinary client that could authenticate with its client_secret and obtain an unbound token --
-                // the opposite of what its registration says. The registration validators reject configuration
-                // that cannot be read, so this only guards stored data that bypassed them.
-                throw new BadCredentialsException(
-                        "tls_client_auth: the client's tls-client-auth configuration cannot be read", e);
-            }
-        }
-        return null;
     }
 }
